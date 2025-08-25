@@ -14,7 +14,7 @@ I am developing a Python benchmarking app with a Tkinter interface that:
 - Records results in CSV format for analysis  
 
 ### Repository Structure
-- `adapters/` → DB-specific adapters (SQLite, MySQL, MongoDB)  
+- `adaptors/` → DB-specific adaptors (SQLite, MySQL, MongoDB)  
 - `datasets/` → generated input data  
 - `results/` → benchmark results (CSV, plots)  
 - `docs/` → screenshots and development log  
