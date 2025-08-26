@@ -15,7 +15,7 @@ Author: Dean Coles
 Date: 2025-08-26
 """
 
-import sqlite3
+import sqlite3    # Built-in library to work with SQLite databases
 
 # Connect to the database (create if it doesn't exist)
 def connect(db_name="benchmark.db"):

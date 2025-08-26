@@ -72,4 +72,20 @@
 \- Saved screenshot: 2025-08-26_mysql_adaptor_crud.png  
 
 
+## 2025-08-26
+
+\- Created `adaptors/mongodb_adaptor.py` with CRUD functions.  
+
+\- Implemented `connect()` using pymongo and environment variables.  
+
+\- Added insert, read, update, and delete operations with a test block.  
+
+\- Verified output shows correct changes after each operation.  
+
+\- Checked results in MongoDB Compass for confirmation.  
+
+\- Saved screenshot: 2025-08-26_mongodb_adaptor_crud.png  
+
+
+
 

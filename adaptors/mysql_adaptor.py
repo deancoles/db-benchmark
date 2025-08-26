@@ -14,10 +14,10 @@ Details:
 Author: Dean Coles
 Date: 2025-08-26
 """
-import os
-from dotenv import load_dotenv
-import mysql.connector
-load_dotenv()
+import os                         # Access environment variables
+from dotenv import load_dotenv    # Load variables from .env file
+import mysql.connector            # MySQL driver for Python
+load_dotenv()                     # Load database credentials from .env file
 
 
 # Connect to MySQL database
