@@ -55,3 +55,21 @@
 \- Saved screenshot: 2025-08-26_sqlite_adaptor_crud.png
 
 
+## 2025-08-26
+
+\- Created `adaptors/mysql_adaptor.py` with full CRUD functions.  
+
+\- Implemented connect() using mysql-connector-python.  
+
+\- Added functions for table creation, insert, read, update, and delete.  
+
+\- Configured credentials to load from environment variables with python-dotenv.  
+
+\- Confirmed `.env` is ignored by Git to protect sensitive data.  
+
+\- Verified script connects to MySQL `benchmark` database and runs CRUD operations successfully.  
+
+\- Saved screenshot: 2025-08-26_mysql_adaptor_crud.png  
+
+
+
