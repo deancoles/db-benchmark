@@ -14,6 +14,7 @@ Details:
 Author: Dean Coles
 Date: 2025-08-26
 """
+
 import os                         # Access environment variables
 from dotenv import load_dotenv    # Load variables from .env file
 import mysql.connector            # MySQL driver for Python
@@ -64,6 +65,13 @@ def delete_record(conn, record_id):
     cur = conn.cursor()
     cur.execute("DELETE FROM records WHERE id = %s", (record_id,))
     conn.commit()
+
+# Remove all rows so each run starts clean
+def reset_table(conn):
+    cur = conn.cursor()
+    cur.execute("TRUNCATE TABLE records;")
+    conn.commit()
+
 
 # Test block to check CRUD functions
 if __name__ == "__main__":

@@ -54,6 +54,13 @@ def update_record(conn, record_id, new_value):
 def delete_record(conn, record_id):
     cur = conn.cursor()
     cur.execute("DELETE FROM records WHERE id = ?", (record_id,))
+    conn.commit()
+
+# Remove all rows so each run starts clean
+def reset_table(conn):
+    cur = conn.cursor()
+    cur.execute("DELETE FROM records;")  
+    conn.commit()
 
 
 # Test block to check CRUD functions

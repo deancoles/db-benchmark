@@ -87,5 +87,17 @@
 \- Saved screenshot: 2025-08-26_mongodb_adaptor_crud.png  
 
 
+## 2025-08-26
+
+\- Integrated `runner.py` with environment-driven DB_TYPE switching.  
+
+\- Added RESET_DATA flag to allow clean slate benchmarking runs.  
+
+\- Implemented `reset_table()` in SQLite and MySQL adaptors.  
+
+\- Ran and verified CRUD operations across SQLite, MySQL, and MongoDB.  
+
+\- Captured screenshots showing `runner.py` alongside terminal output for each database.  
+
 
 
