@@ -7,13 +7,11 @@
 \- First commit: "Initial structure".
 
 
-
 \## 2025-08-24
 
 \- Created runner.py with placeholder main() function and docstring.
 
 \- Verified that the file runs successfully and prints a message.
-
 
 
 \## 2025-08-25
@@ -27,4 +25,33 @@
 \- Removed `.gitkeep` from `datasets/` and `docs/` since these folders now contain real files.  
 
 \- Verified repo structure looks clean and functional.
+
+
+\## 2025-08-25
+
+\- Created `adaptors/sqlite_adaptor.py`.
+
+\- Added docstring describing purpose and planned functionality.
+
+\- Implemented `connect()` function to establish SQLite connection.
+
+\- Added placeholder functions for insert, read, update, and delete.
+
+\- Removed `.gitkeep` from `adaptors/` since folder now has a real file.
+
+\- Verified script connects to `benchmark.db` and closes successfully.
+
+
+\## 2025-08-26
+
+\- Expanded `adapters/sqlite_adaptor.py` with basic CRUD functions.
+
+\- Added insert, read, update, and delete methods.
+
+\- Test block now creates a table, inserts sample records, updates one, and deletes another.
+
+\- Verified script runs successfully and outputs correct results.
+
+\- Saved screenshot: 2025-08-26_sqlite_adaptor_crud.png
+
 

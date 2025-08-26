@@ -1,0 +1,10 @@
+# Database drivers
+mysql-connector-python
+pymongo
+
+# GUI
+# Tkinter is built-in with Python (no package needed)
+
+# Plotting / analysis
+matplotlib
+pandas
