@@ -1,27 +1,26 @@
 """
 sqlite_adaptor.py
 -----------------
+What this file does:
+    - Opens/creates a local SQLite file
+    - Ensures a simple 'records' table exists
+    - Provides CRUD helpers for benchmarking
 
-Purpose:
-    Provides functions to interact with an SQLite database
-    for benchmarking purposes.
+Used by:
+    runner.py (DB_TYPE=sqlite)
 
-Details:
-    - Connect to a local SQLite database file.
-    - Implement basic CRUD operations (create, read, update, delete).
-    - Used by runner.py to execute workloads.
-
-Author: Dean Coles
-Date: 2025-08-26
+Note:
+    If run directly (python sqlite_adaptor.py), the table is always reset 
+    and populated with demo records, ignoring RESET_DATA flag in .env.
 """
 
 import sqlite3    # Built-in library to work with SQLite databases
 
-# Connect to the database (create if it doesn't exist)
+# Open (or create) the SQLite database file
 def connect(db_name="benchmark.db"):
     return sqlite3.connect(db_name)
 
-# Create a table for testing (if it doesn't already exist)
+# Create the records table if missing
 def create_table(conn):
     cur = conn.cursor()
     cur.execute("""
@@ -32,51 +31,50 @@ def create_table(conn):
     """)
     conn.commit()
 
-# Insert a list of records
+# Insert a list of names as rows
 def insert_records(conn, records):
     cur = conn.cursor()
     cur.executemany("INSERT INTO records (name) VALUES (?)", [(r,) for r in records])
     conn.commit()
 
-# Read all rows from the table and return them
+# Return all rows as (id, name)
 def read_all(conn):
     cur = conn.cursor()
     cur.execute("SELECT * FROM records")
     return cur.fetchall()
 
-# Update a record's name field by id
+# Update the 'name' for a given id
 def update_record(conn, record_id, new_value):
     cur = conn.cursor()
     cur.execute("UPDATE records SET name = ? WHERE id = ?", (new_value, record_id))
     conn.commit()
 
-# Delete a record by id
+# Delete the row with a given id
 def delete_record(conn, record_id):
     cur = conn.cursor()
     cur.execute("DELETE FROM records WHERE id = ?", (record_id,))
     conn.commit()
 
-# Remove all rows so each run starts clean
+# Clear all rows and reset the auto-increment counter (id starts at 1).
 def reset_table(conn):
     cur = conn.cursor()
-    cur.execute("DELETE FROM records;")  
+    cur.execute("DELETE FROM records;")                                # remove rows
+    cur.execute("DELETE FROM sqlite_sequence WHERE name='records';")   # reset counter
     conn.commit()
 
 
-# Test block to check CRUD functions
+# Run a simple test if this file is executed directly
+# Always resets the table, ignoring RESET_DATA flag in .env.
 if __name__ == "__main__":
     conn = connect()
     create_table(conn)
 
-    # Insert sample records
     insert_records(conn, ["Alice", "Bob", "Charlie"])
     print("Records after insert:", read_all(conn))
 
-    # Update id 1
     update_record(conn, 1, "Alex")
     print("Records after update:", read_all(conn))
 
-    # Delete id 2
     delete_record(conn, 2)
     print("Records after delete:", read_all(conn))
 

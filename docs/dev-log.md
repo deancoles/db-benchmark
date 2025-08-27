@@ -100,4 +100,22 @@
 \- Captured screenshots showing `runner.py` alongside terminal output for each database.  
 
 
+## 2025-08-27
 
+- Added `redis_adaptor.py` to support Memurai/Redis as a key–value NoSQL database.  
+
+- Updated `runner.py` to include Redis branch with full CRUD cycle.  
+
+- Extended `.env` with Redis configuration variables.  
+
+- Enhanced `sqlite_adaptor.reset_table()` to also reset AUTOINCREMENT counter.  
+
+- Modified `mongodb_adaptor` to use a numeric `seq` field for CRUD, aligning behaviour with SQL/Redis.  
+
+- Adjusted `runner.py` Mongo branch to update/delete by `seq` values instead of names.  
+
+- Added optional unique index on Mongo `seq` field (commented).  
+
+- Standardised all adaptor test blocks so they always reset state when run directly.  
+
+- Updated adaptor docstrings with clear notes about reset behaviour for manual tests.

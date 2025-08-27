@@ -1,18 +1,17 @@
 """
 mysql_adaptor.py
 ----------------
+What this file does:
+    - Connects to a MySQL server using .env credentials
+    - Ensures a simple 'records' table exists
+    - Provides CRUD helpers for benchmarking
 
-Purpose:
-    Provides functions to interact with a MySQL database
-    for benchmarking purposes.
+Used by:
+    runner.py (DB_TYPE=mysql)
 
-Details:
-    - Connect to a MySQL database server.
-    - Implements basic CRUD operations (create, read, update, delete).
-    - Used by runner.py to execute workloads.
-
-Author: Dean Coles
-Date: 2025-08-26
+Note:
+    If run directly (python mysql_adaptor.py), the table is always reset 
+    and populated with demo records, ignoring RESET_DATA flag in .env.
 """
 
 import os                         # Access environment variables
@@ -21,9 +20,8 @@ import mysql.connector            # MySQL driver for Python
 load_dotenv()                     # Load database credentials from .env file
 
 
-# Connect to MySQL database
+# Connect to MySQL using .env variables
 def connect():
-    """Connect to the MySQL database using environment variables."""
     return mysql.connector.connect(
         host=os.getenv("MYSQL_HOST"),
         user=os.getenv("MYSQL_USER"),
@@ -31,7 +29,7 @@ def connect():
         database=os.getenv("MYSQL_DATABASE")
     )
 
-# Create a table for testing (if it does not already exist)
+# Create the records table if missing
 def create_table(conn):
     cur = conn.cursor()
     cur.execute("""
@@ -42,38 +40,39 @@ def create_table(conn):
     """)
     conn.commit()
 
-# Insert a list of records into the table
+# Insert a list of names as rows
 def insert_records(conn, records):
     cur = conn.cursor()
     cur.executemany("INSERT INTO records (name) VALUES (%s)", [(r,) for r in records])
     conn.commit()
 
-# Read all rows from the table and return them
+# Return all rows as (id, name)
 def read_all(conn):
     cur = conn.cursor()
     cur.execute("SELECT * FROM records")
     return cur.fetchall()
 
-# Update a record's name field by id
+# Update the 'name' for a given id
 def update_record(conn, record_id, new_value):
     cur = conn.cursor()
     cur.execute("UPDATE records SET name = %s WHERE id = %s", (new_value, record_id))
     conn.commit()
 
-# Delete a record by id
+# Delete the row with a given id
 def delete_record(conn, record_id):
     cur = conn.cursor()
     cur.execute("DELETE FROM records WHERE id = %s", (record_id,))
     conn.commit()
 
-# Remove all rows so each run starts clean
+# Clear all rows (fresh run)
 def reset_table(conn):
     cur = conn.cursor()
     cur.execute("TRUNCATE TABLE records;")
     conn.commit()
 
 
-# Test block to check CRUD functions
+# Run a simple test if this file is executed directly
+# Always resets the table, ignoring RESET_DATA flag in .env.
 if __name__ == "__main__":
     conn = connect()
     create_table(conn)
