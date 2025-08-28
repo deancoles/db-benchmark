@@ -2,33 +2,27 @@
 runner.py
 ---------
 What this file does:
-    - Picks a database adaptor based on DB_TYPE in .env
+    - Chooses a database adaptor (SQLite, MySQL, MongoDB, Redis)
     - Makes a tiny dataset
-    - Runs one CRUD cycle: insert → read → update → delete
-    - Prints results so you can see it worked
+    - Runs one cycle of: insert → read → update → delete
+    - Prints the results and timings
 
-Supported DB_TYPE values:
-    sqlite, mysql, mongodb, redis
-
-Environment variables (loaded via .env):
-    General:   DB_TYPE, RESET_DATA
-    MySQL:     MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
-    MongoDB:   MONGO_URI, MONGO_DATABASE
-    Redis:     REDIS_HOST, REDIS_PORT, REDIS_DB
-
-Note:
-    This run is a functional sanity check. Real benchmarks will scale the dataset
-    and time operations separately.
+Environment variables (from .env):
+    DB_TYPE, RESET_DATA
+    MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
+    MONGO_URI, MONGO_DATABASE
+    REDIS_HOST, REDIS_PORT, REDIS_DB
 """
 
 import os                                                  # Access environment variables
-from datasets.dataset_generator import generate_dataset    # Generate sample records
-from dotenv import load_dotenv                             # Load variables from .env file
-from typing import Any, cast                               # Help with typing for adaptors
+from datasets.dataset_generator import generate_dataset    # Make test dataset
+from dotenv import load_dotenv                             # Load values from .env
+from typing import Any, cast                               # Typing support
 load_dotenv()                                              # Load connection details from .env
+from utils.benchmark_utils import time_operation, summarise, print_summary_line    # Timing helpers
 
 
-# Pick and return the correct adaptor module
+# Decide which adaptor to use
 def select_adaptor(db_type):
     if db_type == "sqlite":
         from adaptors import sqlite_adaptor as adaptor
@@ -45,73 +39,93 @@ def select_adaptor(db_type):
 
 # Run one CRUD cycle (insert → read → update → delete) for the selected database
 def main():
-    
-    db_type = os.getenv("DB_TYPE","sqlite").lower()              # Database to test (sqlite default)
+    db_type = os.getenv("DB_TYPE","sqlite").lower()              # DB to test (sqlite default)
     reset = os.getenv("RESET_DATA", "true").lower() == "true"    # Check reset flag from .env
-    adaptor = cast(Any, select_adaptor(db_type))
+    adaptor = cast(Any, select_adaptor(db_type))                 # Load chosen adaptor
 
-    # Small dataset for quick verification (benchmarks will use larger sizes later)
-    records = generate_dataset(3)
+    # Make a small dataset and print DB type and dataset
+    records = generate_dataset(3)                                
     print(f"DB_TYPE: {db_type}")
     print("Generated dataset:", records)
 
-    # SQL: connect → ensure table → optional reset → CRUD
+    # SQL: SQLite and MySQL branch
     if db_type in ("sqlite", "mysql"):
-        conn = adaptor.connect()
-        adaptor.create_table(conn)
+        conn = adaptor.connect()        # Open database 
+        adaptor.create_table(conn)      # Create table if needed
 
-        # Optionally reset table (based on RESET_DATA flag)
+        # Optionally clear table (based on RESET_DATA flag)
         if reset:
             adaptor.reset_table(conn)
 
-        adaptor.insert_records(conn, records)
+        # Add records, then show data and timings
+        t = time_operation(adaptor.insert_records, repeats=5, conn=conn, records=records)
         print("After insert:", adaptor.read_all(conn))
+        print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
-        adaptor.update_record(conn, 1, f"{records[0]} (updated)")
+        # Update record 1, then show data and timings
+        t = time_operation(adaptor.update_record, repeats=5, conn=conn, record_id=1,
+                           new_value=f"{records[0]} (updated)")
         print("After update:", adaptor.read_all(conn))
+        print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
-        adaptor.delete_record(conn, 2)
+        # Remove record 2, then show data and timings
+        t = time_operation(adaptor.delete_record, repeats=5, conn=conn, record_id=2)
         print("After delete:", adaptor.read_all(conn))
+        print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
-        conn.close()
+        conn.close()    # Close database connection
 
-    # MongoDB: connect → optional reset → CRUD
+    # MongoDB branch
     elif db_type == "mongodb":
-        db: Any = adaptor.connect()
+        db: Any = adaptor.connect()    # Connect to MongoDB database
 
-        # Drop the collection for a clean start if requested
+        # Drop collection if RESET_DATA=true
         if reset:
             db.records.drop()
-            db.records.create_index("seq", unique=True)   # Ensure seq behaves like a primary key
+            db.records.create_index("seq", unique=True)   # Add unique index on seq (acts like PK)
 
-        adaptor.insert_records(db, records)
+        # Add records, then show data and timings
+        t = time_operation(adaptor.insert_records, repeats=5, db=db, records=records)
         print("After insert:", adaptor.read_all(db))
+        print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
-        adaptor.update_record(db, 1, f"{records[0]} (updated)")
+        # Update record with seq=1, then show data and timings
+        t = time_operation(adaptor.update_record, repeats=5, db=db, seq=1,
+                           new_name=f"{records[0]} (updated)")
         print("After update:", adaptor.read_all(db))
+        print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
-        adaptor.delete_record(db, 2)
+        # Remove record with seq=2, then show data and timings
+        t = time_operation(adaptor.delete_record, repeats=5, db=db, seq=2)
         print("After delete:", adaptor.read_all(db))
+        print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
-    # Redis: connect → optional reset → CRUD
+    # Redis branch
     elif db_type == "redis":
-        r = adaptor.connect()
+        r = adaptor.connect()    # Connect to Redis server
 
-        # Flush the logical DB for a clean start if requested
+        # Flush DB if RESET_DATA=true
         if reset:
             adaptor.reset_store(r)
 
-        adaptor.insert_records(r, records)
+        # Add records, then show data and timings
+        t = time_operation(adaptor.insert_records, repeats=5, r=r, records=records)
         print("After insert:", adaptor.read_all(r))
+        print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
-        adaptor.update_record(r, 1, f"{records[0]} (updated)")
+        # Update key 1, then show data and timings
+        t = time_operation(adaptor.update_record, repeats=5, r=r, record_id=1,
+                           new_value=f"{records[0]} (updated)")
         print("After update:", adaptor.read_all(r))
+        print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
-        adaptor.delete_record(r, 2)
+        # Remove key 2, then show data and timings
+        t = time_operation(adaptor.delete_record, repeats=5, r=r, record_id=2)
         print("After delete:", adaptor.read_all(r))
+        print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
 
-# Ensures that main() only runs when this file is executed directly
+# Only run main() if this file is run directly
 if __name__ == "__main__":
     main()
     

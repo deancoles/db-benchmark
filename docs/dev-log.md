@@ -119,3 +119,19 @@
 - Standardised all adaptor test blocks so they always reset state when run directly.  
 
 - Updated adaptor docstrings with clear notes about reset behaviour for manual tests.
+
+
+## 2025-08-28
+
+- Added `utils/benchmark_utils.py` with helpers to time operations and summarise results.  
+
+- Integrated timing into `runner.py` for SQLite, MySQL, MongoDB, and Redis CRUD blocks.  
+
+- Each operation now reports mean, median, IQR, min, and max across repeated runs.  
+
+- Verified SQLite benchmark run with 3 records repeated 5 times (total 15 inserts).  
+
+- Output confirmed CRUD results and timing summaries printed correctly.  
+
+- Saved screenshot: 2025-08-28_sqlite_benchmark_run.png
+

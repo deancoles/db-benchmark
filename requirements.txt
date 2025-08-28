@@ -1,6 +1,10 @@
 # Database drivers
 mysql-connector-python
 pymongo
+redis
+
+# Environment variables
+python-dotenv
 
 # GUI
 # Tkinter is built-in with Python (no package needed)

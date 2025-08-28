@@ -2,16 +2,16 @@
 redis_adaptor.py
 ----------------
 What this file does:
-    - Connects to Memurai/Redis on localhost:6379
+    - Connects to Redis/Memurai on localhost
     - Stores values under keys like 'record:1'
-    - Provides CRUD helpers for benchmarking (key-value)
+    - Provides CRUD helpers for benchmarking (key–value style)
 
 Used by:
     runner.py (DB_TYPE=redis)
 
 Note:
-    If run directly (python redis_adaptor.py), the Redis database is always flushed 
-    and demo records inserted, ignoring RESET_DATA flag in .env.
+    If run directly, the DB is flushed and demo keys are inserted
+    (ignores RESET_DATA in .env; this is just a quick check).
 """
 
 import os                         # Access environment variables
@@ -39,14 +39,17 @@ def _key(i: int) -> str:
 
 # Insert values as record:1..N.
 def insert_records(r, records):
-    pipe = r.pipeline()                           # Pipeline for batched writes
-    for i, val in enumerate(records, start=1):    # 1-based ids
+    pipe = r.pipeline()                           # Use pipeline to group many SETs into one request
+
+    # 1-based ids                  
+    for i, val in enumerate(records, start=1):    
         pipe.set(_key(i), val)                    # Set key -> value
+
     pipe.execute()
 
 # Return all keys as (id, value) sorted by id
 def read_all(r):
-    keys =r.keys("record:*")                                   # Fetch matching keys
+    keys = r.keys("record:*")                                  # Fetch matching keys
     keys = sorted(keys, key=lambda k: int(k.split(":")[1]))    # Sort by numeric id
     return [(int(k.split(":")[1]), r.get(k)) for k in keys]    # Return (id, value)
 
@@ -62,7 +65,7 @@ def delete_record(r, record_id):
 # Always resets the table, ignoring RESET_DATA flag in .env.
 if __name__ == "__main__":
     client = connect()
-    reset_store(client)
+    reset_store(client)    # Ensure reset
 
     insert_records(client,["Alice", "Bob", "Charlie"])
     print("After insert:", read_all(client))

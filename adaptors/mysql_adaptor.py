@@ -10,8 +10,8 @@ Used by:
     runner.py (DB_TYPE=mysql)
 
 Note:
-    If run directly (python mysql_adaptor.py), the table is always reset 
-    and populated with demo records, ignoring RESET_DATA flag in .env.
+    If run directly, the table is reset and demo rows are inserted
+    (ignores RESET_DATA in .env; this is just a quick check).
 """
 
 import os                         # Access environment variables
@@ -76,6 +76,7 @@ def reset_table(conn):
 if __name__ == "__main__":
     conn = connect()
     create_table(conn)
+    reset_table(conn)  # ensure clean state
 
     # Insert sample records
     insert_records(conn,["Alice", "Bob", "Charlie"])

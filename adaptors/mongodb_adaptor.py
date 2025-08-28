@@ -10,8 +10,8 @@ Used by:
     runner.py (DB_TYPE=mongodb)
 
 Note:
-    If run directly (python mongodb_adaptor.py), the collection is always dropped 
-    and demo records inserted, ignoring RESET_DATA flag in .env.
+    If run directly, the collection is dropped and demo docs are inserted
+    (ignores RESET_DATA in .env; this is just a quick check).
 """
 
 import os                          # Access environment variables
@@ -32,7 +32,7 @@ def insert_records(db, records):
     docs = [{"seq": i + 1, "name": r} for i, r in enumerate(records)]
     db.records.insert_many(docs)
 
-# Return (seq, name) sorted by seq; omit _id for clarity
+# Return (seq, name) sorted by seq (omit _id for clarity)
 def read_all(db):
     cursor = db.records.find({}, {"_id": 0, "seq": 1, "name": 1}).sort("seq", 1)
     return [(doc["seq"], doc["name"]) for doc in cursor]
@@ -50,7 +50,7 @@ def delete_record(db, seq):
 # Always resets the table, ignoring RESET_DATA flag in .env.
 if __name__ == "__main__":
     db = connect()
-    db.records.drop()
+    db.records.drop()                                  # Ensure reset
     db.records.create_index("seq", unique=True)        # Keep seq unique like a primary key
 
     # Insert sample records
