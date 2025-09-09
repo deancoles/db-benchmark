@@ -12,6 +12,7 @@ Environment variables (from .env):
     MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
     MONGO_URI, MONGO_DATABASE
     REDIS_HOST, REDIS_PORT, REDIS_DB
+    REPEATS, DATASET_SIZE
 """
 
 import os                                                  # Access environment variables
@@ -19,7 +20,10 @@ from datasets.dataset_generator import generate_dataset    # Make test dataset
 from dotenv import load_dotenv                             # Load values from .env
 from typing import Any, cast                               # Typing support
 load_dotenv()                                              # Load connection details from .env
-from utils.benchmark_utils import time_operation, summarise, print_summary_line    # Timing helpers
+from utils.benchmark_utils import time_operation, summarise, print_summary_line, write_summary_csv
+import datetime
+REPEATS = int(os.getenv("REPEATS", "5"))                   # Number of times to repeat each operation
+
 
 
 # Decide which adaptor to use
@@ -43,8 +47,9 @@ def main():
     reset = os.getenv("RESET_DATA", "true").lower() == "true"    # Check reset flag from .env
     adaptor = cast(Any, select_adaptor(db_type))                 # Load chosen adaptor
 
-    # Make a small dataset and print DB type and dataset
-    records = generate_dataset(3)                                
+    # Make a dataset (size comes from .env, default 3)
+    DATASET_SIZE = int(os.getenv("DATASET_SIZE", "3"))
+    records = generate_dataset(DATASET_SIZE)
     print(f"DB_TYPE: {db_type}")
     print("Generated dataset:", records)
 
@@ -58,47 +63,60 @@ def main():
             adaptor.reset_table(conn)
 
         # Add records, then show data and timings
-        t = time_operation(adaptor.insert_records, repeats=5, conn=conn, records=records)
+        t = time_operation(adaptor.insert_records, repeats=REPEATS, conn=conn, records=records)
         print("After insert:", adaptor.read_all(conn))
         print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
+        # Save a daily CSV for this database + run type + dataset size.
+        summary_path = f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_{db_type}_{'cold' if reset else 'warm'}_{len(records)}.csv"
+        write_summary_csv(summary_path, db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
+        
+
         # Update record 1, then show data and timings
-        t = time_operation(adaptor.update_record, repeats=5, conn=conn, record_id=1,
+        t = time_operation(adaptor.update_record, repeats=REPEATS, conn=conn, record_id=1,
                            new_value=f"{records[0]} (updated)")
         print("After update:", adaptor.read_all(conn))
         print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
+        write_summary_csv(summary_path, db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
         # Remove record 2, then show data and timings
-        t = time_operation(adaptor.delete_record, repeats=5, conn=conn, record_id=2)
+        t = time_operation(adaptor.delete_record, repeats=REPEATS, conn=conn, record_id=2)
         print("After delete:", adaptor.read_all(conn))
         print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
+        write_summary_csv(summary_path, db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
         conn.close()    # Close database connection
 
     # MongoDB branch
     elif db_type == "mongodb":
-        db: Any = adaptor.connect()    # Connect to MongoDB database
+        db: Any = adaptor.connect()           # Connect to MongoDB database
 
         # Drop collection if RESET_DATA=true
         if reset:
             db.records.drop()
-            db.records.create_index("seq", unique=True)   # Add unique index on seq (acts like PK)
+            db.records.create_index("seq")    # Non-unique index: avoids DuplicateKeyError on repeats
 
         # Add records, then show data and timings
-        t = time_operation(adaptor.insert_records, repeats=5, db=db, records=records)
+        t = time_operation(adaptor.insert_records, repeats=REPEATS, db=db, records=records)
         print("After insert:", adaptor.read_all(db))
         print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
+        # Save a daily CSV for this database + run type + dataset size.
+        summary_path = f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_{db_type}_{'cold' if reset else 'warm'}_{len(records)}.csv"
+        write_summary_csv(summary_path, db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
+
         # Update record with seq=1, then show data and timings
-        t = time_operation(adaptor.update_record, repeats=5, db=db, seq=1,
+        t = time_operation(adaptor.update_record, repeats=REPEATS, db=db, seq=1,
                            new_name=f"{records[0]} (updated)")
         print("After update:", adaptor.read_all(db))
         print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
+        write_summary_csv(summary_path, db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
         # Remove record with seq=2, then show data and timings
-        t = time_operation(adaptor.delete_record, repeats=5, db=db, seq=2)
+        t = time_operation(adaptor.delete_record, repeats=REPEATS, db=db, seq=2)
         print("After delete:", adaptor.read_all(db))
         print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
+        write_summary_csv(summary_path, db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
     # Redis branch
     elif db_type == "redis":
@@ -109,20 +127,28 @@ def main():
             adaptor.reset_store(r)
 
         # Add records, then show data and timings
-        t = time_operation(adaptor.insert_records, repeats=5, r=r, records=records)
+        t = time_operation(adaptor.insert_records, repeats=REPEATS, r=r, records=records)
+
+        # Redis uses fixed keys, so repeats overwrite the same keys.
         print("After insert:", adaptor.read_all(r))
         print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
+        # Save a daily CSV for this database + run type + dataset size.
+        summary_path = f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_{db_type}_{'cold' if reset else 'warm'}_{len(records)}.csv"
+        write_summary_csv(summary_path, db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
+
         # Update key 1, then show data and timings
-        t = time_operation(adaptor.update_record, repeats=5, r=r, record_id=1,
+        t = time_operation(adaptor.update_record, repeats=REPEATS, r=r, record_id=1,
                            new_value=f"{records[0]} (updated)")
         print("After update:", adaptor.read_all(r))
         print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
+        write_summary_csv(summary_path, db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
         # Remove key 2, then show data and timings
-        t = time_operation(adaptor.delete_record, repeats=5, r=r, record_id=2)
+        t = time_operation(adaptor.delete_record, repeats=REPEATS, r=r, record_id=2)
         print("After delete:", adaptor.read_all(r))
         print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
+        write_summary_csv(summary_path, db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
 
 # Only run main() if this file is run directly

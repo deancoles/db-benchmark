@@ -1,0 +1,4 @@
+timestamp,db,operation,records,run_type,runs,mean_time,median_time,min_time,max_time
+2025-09-09T15:38:44.441435Z,sqlite,insert,5,warm,3,0.002137,0.002170,0.002004,0.002236
+2025-09-09T15:38:44.442221Z,sqlite,update,5,warm,3,0.000050,0.000033,0.000028,0.000089
+2025-09-09T15:38:44.442865Z,sqlite,delete,5,warm,3,0.000049,0.000048,0.000027,0.000072

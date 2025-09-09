@@ -44,7 +44,7 @@
 
 \## 2025-08-26
 
-\- Expanded `adapters/sqlite_adaptor.py` with basic CRUD functions.
+\- Expanded `adaptors/sqlite_adaptor.py` with basic CRUD functions.
 
 \- Added insert, read, update, and delete methods.
 
@@ -102,36 +102,54 @@
 
 ## 2025-08-27
 
-- Added `redis_adaptor.py` to support Memurai/Redis as a key–value NoSQL database.  
+\- Added `redis_adaptor.py` to support Memurai/Redis as a key–value NoSQL database.  
 
-- Updated `runner.py` to include Redis branch with full CRUD cycle.  
+\- Updated `runner.py` to include Redis branch with full CRUD cycle.  
 
-- Extended `.env` with Redis configuration variables.  
+\- Extended `.env` with Redis configuration variables.  
 
-- Enhanced `sqlite_adaptor.reset_table()` to also reset AUTOINCREMENT counter.  
+\- Enhanced `sqlite_adaptor.reset_table()` to also reset AUTOINCREMENT counter.  
 
-- Modified `mongodb_adaptor` to use a numeric `seq` field for CRUD, aligning behaviour with SQL/Redis.  
+\- Modified `mongodb_adaptor` to use a numeric `seq` field for CRUD, aligning behaviour with SQL/Redis.  
 
-- Adjusted `runner.py` Mongo branch to update/delete by `seq` values instead of names.  
+\- Adjusted `runner.py` Mongo branch to update/delete by `seq` values instead of names.  
 
-- Added optional unique index on Mongo `seq` field (commented).  
+\- Added non-unique index on Mongo seq field to allow repeated inserts during benchmarks.  
 
-- Standardised all adaptor test blocks so they always reset state when run directly.  
+\- Standardised all adaptor test blocks so they always reset state when run directly.  
 
-- Updated adaptor docstrings with clear notes about reset behaviour for manual tests.
+\- Updated adaptor docstrings with clear notes about reset behaviour for manual tests.
 
 
 ## 2025-08-28
 
-- Added `utils/benchmark_utils.py` with helpers to time operations and summarise results.  
+\- Added `utils/benchmark_utils.py` with helpers to time operations and summarise results.  
 
-- Integrated timing into `runner.py` for SQLite, MySQL, MongoDB, and Redis CRUD blocks.  
+\- Integrated timing into `runner.py` for SQLite, MySQL, MongoDB, and Redis CRUD blocks.  
 
-- Each operation now reports mean, median, IQR, min, and max across repeated runs.  
+\- Each operation now reports mean, median, min, and max across repeated runs.  
 
-- Verified SQLite benchmark run with 3 records repeated 5 times (total 15 inserts).  
+\- Verified SQLite benchmark run with 3 records repeated 5 times (total 15 inserts).  
 
-- Output confirmed CRUD results and timing summaries printed correctly.  
+\- Output confirmed CRUD results and timing summaries printed correctly.  
 
-- Saved screenshot: 2025-08-28_sqlite_benchmark_run.png
+\- Saved screenshot: 2025-08-28_sqlite_benchmark_run.png
 
+
+## 2025-09-09
+
+\- Added `.env` settings: `REPEATS` (repeat count) and `DATASET_SIZE` (dataset size).
+
+\- Updated `benchmark_utils.print_summary_line` to multi-line format with 3 decimal places for readability.
+
+\- Implemented `write_summary_csv` to save results to `/results/` with 6 decimal places for precision.
+
+\- Updated `runner.py` to call CSV writer after each CRUD summary.
+
+\- CSV filenames now include date, database type, run type (cold/warm), and dataset size.
+
+\- Verified functionality with SQLite, MySQL, MongoDB, and Redis runs.
+
+\- Observed that cold runs were sometimes faster than warm runs at very small dataset sizes (e.g. 5 records). Plan to re-test at larger sizes to confirm caching effects.
+
+\- Saved screenshots: `2025-09-09_sqlite_multiline_summary.png`, `2025-09-09_results_folder.png`

@@ -3,9 +3,10 @@ benchmark_utils.py
 ------------------
 What this file does:
     - Times how long operations take
-    - Runs each operation several times
+    - Repeats each operation and collects timings
     - Works out simple stats (fastest, slowest, average, middle value)
-    - Prints a one-line summary you can read quickly
+    - Prints a clear multi-line summary (3 decimal places on screen)
+    - Saves one summary row per operation to CSV (6 decimal places)
 
 Used by:
     runner.py (to measure database inserts, reads, updates, deletes)
@@ -13,11 +14,11 @@ Used by:
 
 from __future__ import annotations                        # Enable future-style annotations 
 import statistics                                         # For averages and medians
-import time                                               # For timing and sleep in test
+import csv, os, datetime, time
 from typing import Callable, Iterable, Any, Dict, List    # Simple type hints for clarity
 
 
-# Time a function once and return how long it took
+# Time a function once and return the elapsed seconds (float).
 def _time_once(fn: Callable, *args, **kwargs) -> float:
     start = time.perf_counter()           # Start timer
     fn(*args, **kwargs)                   # Run function
@@ -28,65 +29,36 @@ def _time_once(fn: Callable, *args, **kwargs) -> float:
 def time_operation(fn: Callable, repeats: int = 5, *args, **kwargs) -> List[float]:
     durations: List[float] = []           # List to store each run’s time
 
-    # Repeat chosen number of times and add each timing to durations
+    # Always run at least once even if repeats <= 0 (safety guard).
     for _ in range(max(1, repeats)):    
         durations.append(_time_once(fn, *args, **kwargs))    
     return durations                      
 
-# Work out simple stats from a list of times
+# Reduce the list to simple, easy-to-explain stats.
 def summarise(durations: Iterable[float]) -> Dict[str, float]:
     xs = list(durations)                  # Convert to list
-    xs.sort()                             # Sort times (needed for percentiles)
     n = len(xs)                           # How many timings received
 
     # If no data, just return zeros
     if n == 0:
         return {
-            "n":0, "min": 0.0, "max": 0.0, "mean": 0.0,
-            "median": 0.0, "p25":0.0, "p75": 0.0, "iqr": 0.0
+            "n": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "median": 0.0
         }
-    p25 = _percentile(xs, 25)             # 25% point
-    p75 = _percentile(xs, 75)             # 75% point
-    return{
+
+    return {
         "n": float(n),                    # Number of runs
         "min": xs[0],                     # Fastest
         "max": xs[-1],                    # Slowest
         "mean": statistics.fmean(xs),     # Average
-        "median": statistics.median(xs),  # Middle value
-        "p25": p25,                       # Lower range
-        "p75": p75,                       # Upper range
-        "iqr": p75 - p25,                 # Gap between upper and lower
+        "median": statistics.median(xs)   # Middle value
     }
 
-# Find a chosen percentile (like 25% or 75%)
-def _percentile(xs: List[float], p: float) -> float:
 
-    # If list is empty
-    if not xs:
-        return 0.0
-    
-    # Lowest value
-    if p <= 0:
-        return xs[0]
-    
-    # Highest value
-    if p >= 100:
-        return xs[-1]
-    
-    k = (len(xs) - 1) * (p / 100.0)      # Position in the list
-    f = int(k)                           # Lower index
-    c = min(f + 1, len(xs) - 1)          # Upper index
-
-    # If exact index, return it
-    if f == c:
-        return xs[f]
-    
-    # Mix values if between two positions
-    d0 = xs[f] * (c - k)                 # Lower part         
-    d1 = xs[c] * (k - f)                 # Upper part        
-    return d0 + d1                       # Combine
-
-# Print a short line with the stats
+# Print a short line with the stats, uses 3 decimal places for readability
 def print_summary_line(
         db_type: str,
         op_name: str,
@@ -95,19 +67,63 @@ def print_summary_line(
         stats: Dict[str, float]
 ) -> None:
     
-    line = (
-        f"{db_type} {op_name.upper()} n={int(stats['n'])} size={dataset_size} {run_type} "
-        f"mean={stats['mean']:.6f}s  p50={stats['median']:.6f}s  "
-        f"IQR={stats['iqr']:.6f}s  min={stats['min']:.6f}s  max={stats['max']:.6f}s"
+    print(
+        f"{db_type} {op_name.upper()} ({run_type})\n"
+        f"  runs={int(stats['n'])}  records={dataset_size}\n"
+        f"  mean={stats['mean']:.3f}s  median={stats['median']:.3f}s\n"
+        f"  min={stats['min']:.3f}s  max={stats['max']:.3f}s"
     )
-    print(line)
+
+# Append a single summary row per operation to a CSV file.
+# If the file doesn't exist, write a header with clear column names.
+def write_summary_csv(
+    path: str,
+    db_type: str,
+    op_name: str,
+    dataset_size: int,
+    run_type: str,
+    stats: Dict[str, float]
+) -> None:
+  
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    write_header = not os.path.exists(path)
+
+    row = [
+        datetime.datetime.now(datetime.UTC).isoformat(),
+        db_type,
+        op_name,
+        dataset_size,
+        run_type,
+        int(stats["n"]),
+        f"{stats['mean']:.6f}",
+        f"{stats['median']:.6f}",
+        f"{stats['min']:.6f}",
+        f"{stats['max']:.6f}",
+    ]
+
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(
+                ["timestamp", "db", "operation", "records", "run_type",
+                 "runs", "mean_time", "median_time", "min_time", "max_time"]
+            )
+        writer.writerow(row)
 
 
 # Run a test if this file is executed directly
 if __name__ == "__main__":
-    def faux_op():
-        time.sleep(0.001)                        # Wait 1ms to act like a database action
+    # Allow dataset size to come from .env (default 3)
+    from dotenv import load_dotenv
+    load_dotenv()
+    import os
+    DATASET_SIZE = int(os.getenv("DATASET_SIZE", "3"))
 
-    times = time_operation(faux_op, repeats=5)   # Collect timings
-    stats = summarise(times)                     # Summarise results
-    print_summary_line("demo", "sleep", dataset_size=3, run_type="cold", stats=stats)
+    # Sleeps for 1ms to simulate a database action
+    def faux_op():
+        time.sleep(0.001)  
+
+    durations = time_operation(faux_op, repeats=5)   # Collect timings
+    stats = summarise(durations)                     # Summarise results
+    print_summary_line("demo", "sleep", dataset_size=DATASET_SIZE, run_type="cold", stats=stats)
+    print("\n(Demo complete: above output shows multi-line format with 3 decimal places.)")

@@ -1,0 +1,4 @@
+timestamp,db,operation,records,run_type,runs,mean_time,median_time,min_time,max_time
+2025-09-09T15:44:44.105305Z,mongodb,insert,5,cold,3,0.000352,0.000297,0.000285,0.000475
+2025-09-09T15:44:44.107359Z,mongodb,update,5,cold,3,0.000301,0.000271,0.000220,0.000412
+2025-09-09T15:44:44.108826Z,mongodb,delete,5,cold,3,0.000256,0.000232,0.000226,0.000310
