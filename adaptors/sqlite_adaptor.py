@@ -16,9 +16,11 @@ Note:
 
 import sqlite3    # Built-in library to work with SQLite databases
 
+
 # Open (or create) the SQLite database file
 def connect(db_name="benchmark.db"):
     return sqlite3.connect(db_name)
+
 
 # Create the records table if missing
 def create_table(conn):
@@ -31,11 +33,13 @@ def create_table(conn):
     """)
     conn.commit()
 
+
 # Insert a list of names as rows
 def insert_records(conn, records):
     cur = conn.cursor()
     cur.executemany("INSERT INTO records (name) VALUES (?)", [(r,) for r in records])
     conn.commit()
+
 
 # Return all rows as (id, name)
 def read_all(conn):
@@ -43,23 +47,29 @@ def read_all(conn):
     cur.execute("SELECT * FROM records")
     return cur.fetchall()
 
+
 # Update the 'name' for a given id
 def update_record(conn, record_id, new_value):
     cur = conn.cursor()
     cur.execute("UPDATE records SET name = ? WHERE id = ?", (new_value, record_id))
     conn.commit()
 
-# Delete the row with a given id
-def delete_record(conn, record_id):
+
+# Delete the newest row (highest id)
+def delete_record(conn, record_id=None):
     cur = conn.cursor()
-    cur.execute("DELETE FROM records WHERE id = ?", (record_id,))
+    cur.execute("""
+        DELETE FROM records
+        WHERE id = (SELECT MAX(id) FROM records)
+    """)
     conn.commit()
+
 
 # Clear all rows and reset the auto-increment counter (id starts at 1).
 def reset_table(conn):
     cur = conn.cursor()
-    cur.execute("DELETE FROM records;")                                # remove rows
-    cur.execute("DELETE FROM sqlite_sequence WHERE name='records';")   # reset counter
+    cur.execute("DELETE FROM records;")                                # Remove rows
+    cur.execute("DELETE FROM sqlite_sequence WHERE name='records';")   # Reset counter
     conn.commit()
 
 
@@ -68,14 +78,17 @@ def reset_table(conn):
 if __name__ == "__main__":
     conn = connect()
     create_table(conn)
-    reset_table(conn)  # ensure clean state
+    reset_table(conn)                                                  # Reset table for fresh runs
 
+    # Insert sample records
     insert_records(conn, ["Alice", "Bob", "Charlie"])
     print("Records after insert:", read_all(conn))
 
+    # Update id 1
     update_record(conn, 1, "Alex")
     print("Records after update:", read_all(conn))
 
+    # Delete the newest row (highest id)
     delete_record(conn, 2)
     print("Records after delete:", read_all(conn))
 

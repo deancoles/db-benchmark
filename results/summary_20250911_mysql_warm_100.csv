@@ -1,0 +1,4 @@
+timestamp,db,operation,records,run_type,runs,mean_time,median_time,min_time,max_time
+2025-09-11T11:03:12.491112+00:00,mysql,insert,100,warm,3,0.002294,0.002349,0.002642,0.001892
+2025-09-11T11:03:12.494864+00:00,mysql,update,100,warm,3,0.000301,0.000263,0.000395,0.000244
+2025-09-11T11:03:12.502923+00:00,mysql,delete,100,warm,3,0.001811,0.001795,0.001933,0.001706

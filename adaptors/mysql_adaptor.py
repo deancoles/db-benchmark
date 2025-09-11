@@ -29,6 +29,7 @@ def connect():
         database=os.getenv("MYSQL_DATABASE")
     )
 
+
 # Create the records table if missing
 def create_table(conn):
     cur = conn.cursor()
@@ -40,11 +41,13 @@ def create_table(conn):
     """)
     conn.commit()
 
+
 # Insert a list of names as rows
 def insert_records(conn, records):
     cur = conn.cursor()
     cur.executemany("INSERT INTO records (name) VALUES (%s)", [(r,) for r in records])
     conn.commit()
+
 
 # Return all rows as (id, name)
 def read_all(conn):
@@ -52,17 +55,23 @@ def read_all(conn):
     cur.execute("SELECT * FROM records")
     return cur.fetchall()
 
+
 # Update the 'name' for a given id
 def update_record(conn, record_id, new_value):
     cur = conn.cursor()
     cur.execute("UPDATE records SET name = %s WHERE id = %s", (new_value, record_id))
     conn.commit()
 
-# Delete the row with a given id
-def delete_record(conn, record_id):
+
+# Delete the newest row (highest id)
+def delete_record(conn, record_id=None):
     cur = conn.cursor()
-    cur.execute("DELETE FROM records WHERE id = %s", (record_id,))
+    cur.execute("""
+        DELETE FROM records
+        WHERE id = (SELECT MAX(id) FROM (SELECT id FROM records) AS sub)
+    """)
     conn.commit()
+
 
 # Clear all rows (fresh run)
 def reset_table(conn):
@@ -80,13 +89,13 @@ if __name__ == "__main__":
 
     # Insert sample records
     insert_records(conn,["Alice", "Bob", "Charlie"])
-    print("Records after insert", read_all(conn))
+    print("Records after insert:", read_all(conn))
 
     # Update id 1
     update_record(conn, 1, "Alex")
     print("Records after update:", read_all(conn))
 
-    # Delete id 2
+    # Delete the newest row (highest id)
     delete_record(conn, 2)
     print("Records after delete:", read_all(conn))
 

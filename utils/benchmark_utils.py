@@ -25,7 +25,7 @@ def _time_once(fn: Callable, *args, **kwargs) -> float:
     end = time.perf_counter()             # End timer
     return end - start                    # Elapsed time in seconds
 
-# Time a function several times and collect the results
+# Run a function several times and collect durations
 def time_operation(fn: Callable, repeats: int = 5, *args, **kwargs) -> List[float]:
     durations: List[float] = []           # List to store each run’s time
 
@@ -34,7 +34,7 @@ def time_operation(fn: Callable, repeats: int = 5, *args, **kwargs) -> List[floa
         durations.append(_time_once(fn, *args, **kwargs))    
     return durations                      
 
-# Reduce the list to simple, easy-to-explain stats.
+# Turn durations into simple stats (seconds)
 def summarise(durations: Iterable[float]) -> Dict[str, float]:
     xs = list(durations)                  # Convert to list
     n = len(xs)                           # How many timings received
@@ -58,7 +58,7 @@ def summarise(durations: Iterable[float]) -> Dict[str, float]:
     }
 
 
-# Print a short line with the stats, uses 3 decimal places for readability
+# Print a neat multi-line block (3 d.p. on screen)
 def print_summary_line(
         db_type: str,
         op_name: str,
@@ -74,8 +74,7 @@ def print_summary_line(
         f"  min={stats['min']:.3f}s  max={stats['max']:.3f}s"
     )
 
-# Append a single summary row per operation to a CSV file.
-# If the file doesn't exist, write a header with clear column names.
+# Append results to CSV; write a header if the file is new
 def write_summary_csv(
     path: str,
     db_type: str,
@@ -104,6 +103,7 @@ def write_summary_csv(
     with open(path, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         if write_header:
+            # times are seconds
             writer.writerow(
                 ["timestamp", "db", "operation", "records", "run_type",
                  "runs", "mean_time", "median_time", "min_time", "max_time"]

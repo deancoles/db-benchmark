@@ -1,18 +1,19 @@
 """
 runner.py
 ---------
-What this file does:
-    - Chooses a database adaptor (SQLite, MySQL, MongoDB, Redis)
-    - Makes a tiny dataset
-    - Runs one cycle of: insert → read → update → delete
-    - Prints the results and timings
+Runs a benchmark cycle for the chosen database.
 
-Environment variables (from .env):
-    DB_TYPE, RESET_DATA
-    MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
-    MONGO_URI, MONGO_DATABASE
-    REDIS_HOST, REDIS_PORT, REDIS_DB
-    REPEATS, DATASET_SIZE
+What this script does:
+  - Builds a small dataset of names (size from .env)
+  - Runs INSERT, UPDATE, DELETE with timing + repeats
+  - Prints short summaries (3 d.p.) and writes a CSV row per op
+
+Controlled by .env:
+  DB_TYPE       sqlite | mysql | mongodb | redis
+  RESET_DATA    true=cold (fresh) / false=warm (keep data)
+  DATASET_SIZE  how many names to generate
+  REPEATS       repeats per timed operation
+  OUTPUT_DETAIL count | preview | full (how much to print after each op)
 """
 
 import os                                                  # Access environment variables
@@ -24,7 +25,23 @@ from utils.benchmark_utils import time_operation, summarise, print_summary_line,
 import datetime
 REPEATS = int(os.getenv("REPEATS", "5"))                   # Number of times to repeat each operation
 
+# Shorten long lists for printing (first 5, "...", last 5)
+def preview_list(items, head: int = 5, tail: int = 5):
+    items = list(items)
+    if len(items) <= head + tail:
+        return items
+    return items[:head] + ["..."] + items[-tail:]
 
+# Choose how much to print after each operation: count / preview / full
+OUTPUT_DETAIL = os.getenv("OUTPUT_DETAIL", "count").lower()
+def display_after(items):
+    items = list(items)
+    if OUTPUT_DETAIL == "count":
+        return f"{len(items)} items"
+    elif OUTPUT_DETAIL == "preview":
+        return preview_list(items)
+    else:
+        return items
 
 # Decide which adaptor to use
 def select_adaptor(db_type):
@@ -50,10 +67,16 @@ def main():
     # Make a dataset (size comes from .env, default 3)
     DATASET_SIZE = int(os.getenv("DATASET_SIZE", "3"))
     records = generate_dataset(DATASET_SIZE)
-    print(f"DB_TYPE: {db_type}")
-    print("Generated dataset:", records)
+    print(f"\nDB_TYPE: {db_type}")
 
-    # SQL: SQLite and MySQL branch
+    # Print a preview of the dataset (first 5 and last 5 records if large)
+    if len(records) > 10:
+        preview = records[:5] + ["..."] + records[-5:]
+    else:
+        preview = records
+    print("Generated dataset:", preview)
+
+    # SQL: SQLite and MySQL branch. Connect, reset if needed, then run insert/update/delete
     if db_type in ("sqlite", "mysql"):
         conn = adaptor.connect()        # Open database 
         adaptor.create_table(conn)      # Create table if needed
@@ -64,7 +87,7 @@ def main():
 
         # Add records, then show data and timings
         t = time_operation(adaptor.insert_records, repeats=REPEATS, conn=conn, records=records)
-        print("After insert:", adaptor.read_all(conn))
+        print("\nAfter insert:", display_after(adaptor.read_all(conn)))
         print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
         # Save a daily CSV for this database + run type + dataset size.
@@ -75,19 +98,19 @@ def main():
         # Update record 1, then show data and timings
         t = time_operation(adaptor.update_record, repeats=REPEATS, conn=conn, record_id=1,
                            new_value=f"{records[0]} (updated)")
-        print("After update:", adaptor.read_all(conn))
+        print("\nAfter update:", display_after(adaptor.read_all(conn)))
         print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
         # Remove record 2, then show data and timings
         t = time_operation(adaptor.delete_record, repeats=REPEATS, conn=conn, record_id=2)
-        print("After delete:", adaptor.read_all(conn))
+        print("\nAfter delete:", display_after(adaptor.read_all(conn)))
         print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
         conn.close()    # Close database connection
 
-    # MongoDB branch
+    # MongoDB branch. Connect, reset if needed, then run insert/update/delete
     elif db_type == "mongodb":
         db: Any = adaptor.connect()           # Connect to MongoDB database
 
@@ -98,7 +121,7 @@ def main():
 
         # Add records, then show data and timings
         t = time_operation(adaptor.insert_records, repeats=REPEATS, db=db, records=records)
-        print("After insert:", adaptor.read_all(db))
+        print("\nAfter insert:", display_after(adaptor.read_all(db)))
         print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
         # Save a daily CSV for this database + run type + dataset size.
@@ -106,19 +129,18 @@ def main():
         write_summary_csv(summary_path, db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
         # Update record with seq=1, then show data and timings
-        t = time_operation(adaptor.update_record, repeats=REPEATS, db=db, seq=1,
-                           new_name=f"{records[0]} (updated)")
-        print("After update:", adaptor.read_all(db))
+        t = time_operation(adaptor.update_record, repeats=REPEATS, db=db, seq=1, new_name=f"{records[0]} (updated)")
+        print("\nAfter update:", display_after(adaptor.read_all(db)))
         print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
         # Remove record with seq=2, then show data and timings
-        t = time_operation(adaptor.delete_record, repeats=REPEATS, db=db, seq=2)
-        print("After delete:", adaptor.read_all(db))
+        t = time_operation(adaptor.delete_record, repeats=REPEATS, db=db)
+        print("\nAfter delete:", display_after(adaptor.read_all(db)))
         print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
-    # Redis branch
+    # Redis branch. Connect, reset if needed, then run insert/update/delete
     elif db_type == "redis":
         r = adaptor.connect()    # Connect to Redis server
 
@@ -129,8 +151,8 @@ def main():
         # Add records, then show data and timings
         t = time_operation(adaptor.insert_records, repeats=REPEATS, r=r, records=records)
 
-        # Redis uses fixed keys, so repeats overwrite the same keys.
-        print("After insert:", adaptor.read_all(r))
+        # Redis uses an internal counter so warm runs accumulate like SQL/Mongo
+        print("\nAfter insert:", display_after(adaptor.read_all(r)))
         print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
         # Save a daily CSV for this database + run type + dataset size.
@@ -138,15 +160,14 @@ def main():
         write_summary_csv(summary_path, db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
         # Update key 1, then show data and timings
-        t = time_operation(adaptor.update_record, repeats=REPEATS, r=r, record_id=1,
-                           new_value=f"{records[0]} (updated)")
-        print("After update:", adaptor.read_all(r))
+        t = time_operation(adaptor.update_record, repeats=REPEATS, r=r, record_id=1, new_value=f"{records[0]} (updated)")
+        print("\nAfter update:", display_after(adaptor.read_all(r)))
         print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
         # Remove key 2, then show data and timings
         t = time_operation(adaptor.delete_record, repeats=REPEATS, r=r, record_id=2)
-        print("After delete:", adaptor.read_all(r))
+        print("\nAfter delete:", display_after(adaptor.read_all(r)))
         print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
@@ -154,4 +175,4 @@ def main():
 # Only run main() if this file is run directly
 if __name__ == "__main__":
     main()
-    
+    print()  # Adds a blank line before returning to terminal

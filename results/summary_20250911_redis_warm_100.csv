@@ -1,0 +1,4 @@
+timestamp,db,operation,records,run_type,runs,mean_time,median_time,min_time,max_time
+2025-09-11T14:56:02.177580+00:00,redis,insert,100,warm,3,0.686542,0.005031,2.050042,0.005031
+2025-09-11T14:56:02.208169+00:00,redis,update,100,warm,3,0.000284,0.000089,0.000687,0.000075
+2025-09-11T14:56:02.238424+00:00,redis,delete,100,warm,3,0.000600,0.000582,0.000663,0.000555
