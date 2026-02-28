@@ -25,6 +25,7 @@ def _time_once(fn: Callable, *args, **kwargs) -> float:
     end = time.perf_counter()             # End timer
     return end - start                    # Elapsed time in seconds
 
+
 # Run a function several times and collect durations
 def time_operation(fn: Callable, repeats: int = 5, *args, **kwargs) -> List[float]:
     durations: List[float] = []           # List to store each run’s time
@@ -33,6 +34,7 @@ def time_operation(fn: Callable, repeats: int = 5, *args, **kwargs) -> List[floa
     for _ in range(max(1, repeats)):    
         durations.append(_time_once(fn, *args, **kwargs))    
     return durations                      
+
 
 # Turn durations into simple stats (seconds)
 def summarise(durations: Iterable[float]) -> Dict[str, float]:
@@ -68,11 +70,12 @@ def print_summary_line(
 ) -> None:
     
     print(
-        f"{db_type} {op_name.upper()} ({run_type})\n"
-        f"  runs={int(stats['n'])}  records={dataset_size}\n"
+        f"{db_type.upper()} {op_name.upper()} ({run_type.upper()})\n"
+        f"  runs={int(stats['n'])}  dataset_size={dataset_size}\n"
         f"  mean={stats['mean']:.3f}s  median={stats['median']:.3f}s\n"
         f"  min={stats['min']:.3f}s  max={stats['max']:.3f}s"
     )
+
 
 # Append results to CSV; write a header if the file is new
 def write_summary_csv(

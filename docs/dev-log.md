@@ -166,3 +166,36 @@
 \- Updated `runner.py` comments to reflect current Redis counter behaviour.  
 
 \- Verified that comments are now consistent and make sense in their placement.  
+
+
+##27-02-2026
+
+- Implemented read_all timing across all database adaptors to measure full dataset retrieval performance.
+
+- Implemented read_by_id timing to benchmark primary key lookup performance consistently across SQLite, MySQL, MongoDB, and Redis.
+
+- Ensured read_by_id uses appropriate identifier per system (SQL id, MongoDB seq, Redis key index).
+
+- Integrated both read operations into runner.py with timing, repeat handling, and CSV summary output.
+
+- Confirmed that both read operations execute correctly under cold and warm configurations.
+
+- Verified consistent statistical output (mean, median, min, max) across all adaptors for read operations.
+
+
+## 28-02-2026
+
+- Renamed read operations from read_all and read_by_id to full_scan and primary_key_lookup in output for improved academic clarity.
+
+- Updated console formatting to use uppercase database and run labels (e.g. SQLITE FULL_SCAN (COLD)).
+
+- Reordered operation flow to separate read operations from write operations (INSERT → FULL_SCAN → PRIMARY_KEY_LOOKUP → UPDATE → DELETE).
+
+- Improved console wording for read operations (“Full Scan returned”, “Primary Key Lookup returned”) to better reflect non-mutating behaviour.
+
+- Replaced records= output label with dataset_size= to avoid confusion with cumulative table size when using repeats.
+
+- Refined spacing and layout of summary blocks for cleaner benchmarking output presentation.
+
+- Introduced configuration groundwork for an isolated benchmarking mode via .env flags (ISOLATED_MODE, ISOLATED_OP).
+

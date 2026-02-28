@@ -44,6 +44,7 @@ def _key(i: int) -> str:
 # Special Redis key used as a counter for unique ids
 SEQ_KEY = "record:seq"
 
+
 # Convert Redis bytes into str (safety if decode_responses=False)
 def _as_str(b):
     return b.decode() if isinstance(b, (bytes, bytearray)) else b
@@ -111,6 +112,22 @@ def delete_record(r, record_id=None):
     r.delete(_key(max(ids)))                               # Delete record with highest id
 
 
+def read_by_id(r, record_id: int):
+    v = r.get(_key(record_id))
+    v = _as_str(v) if v is not None else None
+    return (record_id, v)
+
+
+def filter_contains(r, substring: str):
+    out = []
+    for i in sorted(_numeric_ids(r)):
+        v = r.get(_key(i))
+        v = _as_str(v) if v is not None else ""
+        if substring in v:
+            out.append((i, v))
+    return out
+
+
 # Run a simple test if this file is executed directly
 # Always resets the store, ignoring RESET_DATA flag in .env.
 if __name__ == "__main__":
@@ -125,3 +142,4 @@ if __name__ == "__main__":
 
     delete_record(client, 2)
     print("After delete:", read_all(client))
+    

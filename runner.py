@@ -24,6 +24,8 @@ load_dotenv()                                              # Load connection det
 from utils.benchmark_utils import time_operation, summarise, print_summary_line, write_summary_csv
 import datetime
 REPEATS = int(os.getenv("REPEATS", "5"))                   # Number of times to repeat each operation
+FILTER_TERM = os.getenv("FILTER_TERM", "Record 1")
+READ_ID = int(os.getenv("READ_ID", "1"))
 
 # Shorten long lists for printing (first 5, "...", last 5)
 def preview_list(items, head: int = 5, tail: int = 5):
@@ -87,24 +89,36 @@ def main():
 
         # Add records, then show data and timings
         t = time_operation(adaptor.insert_records, repeats=REPEATS, conn=conn, records=records)
-        print("\nAfter insert:", display_after(adaptor.read_all(conn)))
+        print("\nTable Size After INSERT:", display_after(adaptor.read_all(conn)))
         print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
         # Save a daily CSV for this database + run type + dataset size.
         summary_path = f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_{db_type}_{'cold' if reset else 'warm'}_{len(records)}.csv"
         write_summary_csv(summary_path, db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
-        
+
+        # Time READ_ALL
+        t = time_operation(adaptor.read_all, repeats=REPEATS, conn=conn)
+        print("\nFull Scan returned:", display_after(adaptor.read_all(conn)))
+        print_summary_line(db_type, "full_scan", len(records), "cold" if reset else "warm", summarise(t))
+        write_summary_csv(summary_path, db_type, "full_scan", len(records), "cold" if reset else "warm", summarise(t))
+
+        # Time READ_BY_ID (primary key lookup)
+        t = time_operation(adaptor.read_by_id, repeats=REPEATS, conn=conn, record_id=READ_ID)
+        result = adaptor.read_by_id(conn, READ_ID)
+        print(f"\nPrimary Key Lookup returned (id={READ_ID}):", result)
+        print_summary_line(db_type, "primary_key_lookup", len(records), "cold" if reset else "warm", summarise(t))
+        write_summary_csv(summary_path, db_type, "primary_key_lookup", len(records), "cold" if reset else "warm", summarise(t))
 
         # Update record 1, then show data and timings
         t = time_operation(adaptor.update_record, repeats=REPEATS, conn=conn, record_id=1,
                            new_value=f"{records[0]} (updated)")
-        print("\nAfter update:", display_after(adaptor.read_all(conn)))
+        print("\nTable Size After UPDATE:", display_after(adaptor.read_all(conn)))
         print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
         # Remove record 2, then show data and timings
         t = time_operation(adaptor.delete_record, repeats=REPEATS, conn=conn, record_id=2)
-        print("\nAfter delete:", display_after(adaptor.read_all(conn)))
+        print("\nTable Size After DELETE:", display_after(adaptor.read_all(conn)))
         print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
@@ -121,22 +135,35 @@ def main():
 
         # Add records, then show data and timings
         t = time_operation(adaptor.insert_records, repeats=REPEATS, db=db, records=records)
-        print("\nAfter insert:", display_after(adaptor.read_all(db)))
+        print("\nTable Size After INSERT:", display_after(adaptor.read_all(db)))
         print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
         # Save a daily CSV for this database + run type + dataset size.
         summary_path = f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_{db_type}_{'cold' if reset else 'warm'}_{len(records)}.csv"
         write_summary_csv(summary_path, db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
+        # Time READ_ALL
+        t = time_operation(adaptor.read_all, repeats=REPEATS, db=db)
+        print("\nFull Scan returned:", display_after(adaptor.read_all(db)))
+        print_summary_line(db_type, "full_scan", len(records), "cold" if reset else "warm", summarise(t))
+        write_summary_csv(summary_path, db_type, "full_scan", len(records), "cold" if reset else "warm", summarise(t))
+
+        # Time READ_BY_ID (lookup by seq)
+        t = time_operation(adaptor.read_by_id, repeats=REPEATS, db=db, seq=READ_ID)
+        result = adaptor.read_by_id(db, READ_ID)
+        print(f"\nPrimary Key Lookup returned (id={READ_ID}):", result)
+        print_summary_line(db_type, "primary_key_lookup", len(records), "cold" if reset else "warm", summarise(t))
+        write_summary_csv(summary_path, db_type, "primary_key_lookup", len(records), "cold" if reset else "warm", summarise(t))
+
         # Update record with seq=1, then show data and timings
         t = time_operation(adaptor.update_record, repeats=REPEATS, db=db, seq=1, new_name=f"{records[0]} (updated)")
-        print("\nAfter update:", display_after(adaptor.read_all(db)))
+        print("\nTable Size After UPDATE:", display_after(adaptor.read_all(db)))
         print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
         # Remove record with seq=2, then show data and timings
         t = time_operation(adaptor.delete_record, repeats=REPEATS, db=db)
-        print("\nAfter delete:", display_after(adaptor.read_all(db)))
+        print("\nTable Size After DELETE:", display_after(adaptor.read_all(db)))
         print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
@@ -152,22 +179,35 @@ def main():
         t = time_operation(adaptor.insert_records, repeats=REPEATS, r=r, records=records)
 
         # Redis uses an internal counter so warm runs accumulate like SQL/Mongo
-        print("\nAfter insert:", display_after(adaptor.read_all(r)))
+        print("\nTable Size After INSERT:", display_after(adaptor.read_all(r)))
         print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
         # Save a daily CSV for this database + run type + dataset size.
         summary_path = f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_{db_type}_{'cold' if reset else 'warm'}_{len(records)}.csv"
         write_summary_csv(summary_path, db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
+        # Time READ_ALL
+        t = time_operation(adaptor.read_all, repeats=REPEATS, r=r)
+        print("\nFull Scan returned:", display_after(adaptor.read_all(r)))
+        print_summary_line(db_type, "full_scan", len(records), "cold" if reset else "warm", summarise(t))
+        write_summary_csv(summary_path, db_type, "full_scan", len(records), "cold" if reset else "warm", summarise(t))
+
+        # Time READ_BY_ID (key lookup)
+        t = time_operation(adaptor.read_by_id, repeats=REPEATS, r=r, record_id=READ_ID)
+        result = adaptor.read_by_id(r, READ_ID)
+        print(f"\nPrimary Key Lookup returned (id={READ_ID}):", result)
+        print_summary_line(db_type, "primary_key_lookup", len(records), "cold" if reset else "warm", summarise(t))
+        write_summary_csv(summary_path, db_type, "primary_key_lookup", len(records), "cold" if reset else "warm", summarise(t))
+
         # Update key 1, then show data and timings
         t = time_operation(adaptor.update_record, repeats=REPEATS, r=r, record_id=1, new_value=f"{records[0]} (updated)")
-        print("\nAfter update:", display_after(adaptor.read_all(r)))
+        print("\nTable Size After UPDATE:", display_after(adaptor.read_all(r)))
         print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
         # Remove key 2, then show data and timings
         t = time_operation(adaptor.delete_record, repeats=REPEATS, r=r, record_id=2)
-        print("\nAfter delete:", display_after(adaptor.read_all(r)))
+        print("\nTable Size After DELETE:", display_after(adaptor.read_all(r)))
         print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 

@@ -15,6 +15,7 @@ Note:
 """
 
 import os                          # Access environment variables
+import re
 from dotenv import load_dotenv     # Load variables from .env file
 from pymongo import MongoClient    # MongoDB driver for Python
 load_dotenv()                      # Load database connection details from .env file
@@ -39,6 +40,7 @@ def read_all(db):
     cursor = db.records.find({}, {"_id": 0, "seq": 1, "name": 1}).sort("seq", 1)    # Query all docs, exclude _id, include seq and name, sort ascending by seq
     return [(doc["seq"], doc["name"]) for doc in cursor]                            # Build list of (seq, name) tuples
 
+
 # Update one document by seq
 def update_record(db, seq, new_name):
     db.records.update_one({"seq": seq}, {"$set": {"name": new_name}})               # Find doc with given seq and update name field
@@ -46,7 +48,21 @@ def update_record(db, seq, new_name):
 
 # Delete the newest document (highest seq)
 def delete_record(db, record_id=None):
-    db.records.find_one_and_delete({}, sort=[("seq", -1)])                          # Find one doc with highest seq and delete it        
+    db.records.find_one_and_delete({}, sort=[("seq", -1)])                          # Find one doc with highest seq and delete it       
+
+
+ 
+def read_by_id(db, seq: int):
+    return db.records.find_one({"seq": seq}, {"_id": 0, "seq": 1, "name": 1})
+
+
+def filter_contains(db, substring: str):
+    pattern = re.escape(substring)
+    cursor = db.records.find(
+        {"name": {"$regex": pattern}},
+        {"_id": 0, "seq": 1, "name": 1},
+    ).sort("seq", 1)
+    return [(doc["seq"], doc["name"]) for doc in cursor]
 
 
 # Run a simple test if this file is executed directly
@@ -67,3 +83,4 @@ if __name__ == "__main__":
     # Delete the newest document (highest seq)
     delete_record(db, 2)
     print("Records after delete:", read_all(db))
+    

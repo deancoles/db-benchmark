@@ -73,6 +73,18 @@ def delete_record(conn, record_id=None):
     conn.commit()
 
 
+def read_by_id(conn, record_id: int):
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM records WHERE id = %s", (record_id,))
+    return cur.fetchone()
+
+
+def filter_contains(conn, substring: str):
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM records WHERE name LIKE %s", (f"%{substring}%",))
+    return cur.fetchall()
+
+
 # Clear all rows (fresh run)
 def reset_table(conn):
     cur = conn.cursor()
@@ -100,3 +112,4 @@ if __name__ == "__main__":
     print("Records after delete:", read_all(conn))
 
     conn.close()
+    
