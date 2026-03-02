@@ -18,7 +18,10 @@ import os                          # Access environment variables
 import re
 from dotenv import load_dotenv     # Load variables from .env file
 from pymongo import MongoClient    # MongoDB driver for Python
+from pymongo import ReturnDocument
 load_dotenv()                      # Load database connection details from .env file
+
+SEQ_DOC_ID = "record_seq"  # fixed id for the counter document
 
 
 # Connect to MongoDB and return a database handle
@@ -29,10 +32,29 @@ def connect():
     return client[db_name]
 
 
-# Insert docs with numeric seq and name
+def _next_seqs(db, n: int):
+    """
+    Reserve and return the next n unique seq values (like auto-increment).
+    Returns a list of ints e.g. [101, 102, 103]
+    """
+    if n <= 0:
+        return []
+
+    doc = db.meta.find_one_and_update(
+        {"_id": SEQ_DOC_ID},
+        {"$inc": {"value": n}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER
+    )
+    end_value = int(doc["value"])
+    start_value = end_value - n + 1
+    return list(range(start_value, end_value + 1))
+
+
 def insert_records(db, records):
-    docs = [{"seq": i + 1, "name": r} for i, r in enumerate(records)]               # Build docs: [{"seq": 1, "name": "Alice"}, ...]
-    db.records.insert_many(docs)                                                    # Insert all documents into 'records' collection
+    seqs = _next_seqs(db, len(records))
+    docs = [{"seq": s, "name": r} for s, r in zip(seqs, records)]
+    db.records.insert_many(docs)
 
 
 # Return (seq, name) sorted by seq (omit _id for clarity)
@@ -41,19 +63,25 @@ def read_all(db):
     return [(doc["seq"], doc["name"]) for doc in cursor]                            # Build list of (seq, name) tuples
 
 
+# Return one document by seq (omit _id for clarity)
+def read_by_id(db, seq):
+    doc = db.records.find_one({"seq": seq}, {"_id": 0, "seq": 1, "name": 1})
+    if not doc:
+        return None
+    return (doc["seq"], doc["name"])
+
+
 # Update one document by seq
 def update_record(db, seq, new_name):
     db.records.update_one({"seq": seq}, {"$set": {"name": new_name}})               # Find doc with given seq and update name field
 
 
-# Delete the newest document (highest seq)
-def delete_record(db, record_id=None):
-    db.records.find_one_and_delete({}, sort=[("seq", -1)])                          # Find one doc with highest seq and delete it       
-
-
- 
-def read_by_id(db, seq: int):
-    return db.records.find_one({"seq": seq}, {"_id": 0, "seq": 1, "name": 1})
+# Delete by seq if provided, otherwise delete newest (highest seq)
+def delete_record(db, seq=None):
+    if seq is not None:
+        db.records.delete_one({"seq": seq})
+        return
+    db.records.find_one_and_delete({}, sort=[("seq", -1)])
 
 
 def filter_contains(db, substring: str):

@@ -54,7 +54,7 @@ def _as_str(b):
 def _numeric_ids(r):
 
     # Loop all keys starting with 'record:'
-    for k in r.keys("record:*"):
+    for k in r.scan_iter("record:*"):
         s = _as_str(k)                                      # Ensure key is a string
         parts = s.split(":")                                # Split into 'record', '<id>'
 
@@ -73,13 +73,14 @@ def insert_records(r, records):
         r.set(SEQ_KEY, max_id)                              # Set counter to current max
 
     pipe = r.pipeline()                                     # Pipeline batches Redis commands
+    for _ in records:
+        pipe.incr(SEQ_KEY)                      
+    new_ids = pipe.execute()   
 
-    # Loop through all provided records
-    for val in records:
-        new_id = int(r.incr(SEQ_KEY))                       # Increment counter to get next id
-        pipe.set(_key(new_id), val)                         # Set key 'record:<id>' to value
-
-    pipe.execute()                                          # Send batched commands to Redis
+    pipe = r.pipeline()
+    for new_id, val in zip(new_ids, records):
+        pipe.set(_key(new_id), val)
+    pipe.execute()                    
 
 
 # Return all rows as list of (id, value) pairs
@@ -96,26 +97,33 @@ def read_all(r):
     return out
 
 
+# Return one row by id (key lookup)
+def read_by_id(r, record_id):
+    v = r.get(_key(record_id))
+    if v is None:
+        return None
+    v = _as_str(v)
+    return (record_id, v)
+
+
 # Update one value by id
 def update_record(r, record_id, new_value):
     r.set(_key(record_id), new_value)                      # Replace value at key
 
 
-# Delete the newest key (highest id)
+# Delete by id if provided, otherwise delete newest (highest id)
 def delete_record(r, record_id=None):
-    ids = list(_numeric_ids(r))                            # Collect all ids
 
-    # If empty, nothing to delete
+    # Delete a specific id if requested
+    if record_id is not None:
+        r.delete(_key(record_id))
+        return
+
+    # Otherwise delete newest
+    ids = list(_numeric_ids(r))
     if not ids:
         return
-    
-    r.delete(_key(max(ids)))                               # Delete record with highest id
-
-
-def read_by_id(r, record_id: int):
-    v = r.get(_key(record_id))
-    v = _as_str(v) if v is not None else None
-    return (record_id, v)
+    r.delete(_key(max(ids)))
 
 
 def filter_contains(r, substring: str):

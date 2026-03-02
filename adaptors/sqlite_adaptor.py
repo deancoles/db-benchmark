@@ -58,10 +58,16 @@ def update_record(conn, record_id, new_value):
 # Delete the newest row (highest id)
 def delete_record(conn, record_id=None):
     cur = conn.cursor()
-    cur.execute("""
-        DELETE FROM records
-        WHERE id = (SELECT MAX(id) FROM records)
-    """)
+
+    # If an id is provided, delete that specific row 
+    if record_id is not None:
+        cur.execute("DELETE FROM records WHERE id = ?", (record_id,))
+    else:
+        # Delete newest 
+        cur.execute("""
+            DELETE FROM records
+            WHERE id = (SELECT MAX(id) FROM records)
+        """)
     conn.commit()
 
 

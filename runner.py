@@ -1,31 +1,43 @@
 """
 runner.py
 ---------
-Runs a benchmark cycle for the chosen database.
+Runs benchmarking for the chosen database adaptor.
 
 What this script does:
-  - Builds a small dataset of names (size from .env)
-  - Runs INSERT, UPDATE, DELETE with timing + repeats
-  - Prints short summaries (3 d.p.) and writes a CSV row per op
+  - Builds a dataset of names (size from .env)
+  - Scenario mode: runs INSERT → FULL_SCAN → PRIMARY_KEY_LOOKUP → UPDATE → DELETE
+  - Isolated mode: runs ONE chosen operation on a reset baseline dataset
+  - Prints summaries (3 d.p.) and writes a CSV row per operation
 
 Controlled by .env:
   DB_TYPE       sqlite | mysql | mongodb | redis
-  RESET_DATA    true=cold (fresh) / false=warm (keep data)
-  DATASET_SIZE  how many names to generate
+  RESET_DATA    Scenario mode only: true=cold (clear data) / false=warm (retain data)
+  DATASET_SIZE  number of records to generate per run
   REPEATS       repeats per timed operation
+  ISOLATED_MODE true/false (run one operation in isolation)
+  ISOLATED_OP   insert | full_scan | primary_key_lookup | update | delete
+  READ_ID       record/key/seq to use for lookups
   OUTPUT_DETAIL count | preview | full (how much to print after each op)
 """
 
-import os                                                  # Access environment variables
-from datasets.dataset_generator import generate_dataset    # Make test dataset
-from dotenv import load_dotenv                             # Load values from .env
-from typing import Any, cast                               # Typing support
-load_dotenv()                                              # Load connection details from .env
-from utils.benchmark_utils import time_operation, summarise, print_summary_line, write_summary_csv
-import datetime
-REPEATS = int(os.getenv("REPEATS", "5"))                   # Number of times to repeat each operation
-FILTER_TERM = os.getenv("FILTER_TERM", "Record 1")
-READ_ID = int(os.getenv("READ_ID", "1"))
+import os                                                   # Access environment variables
+import datetime                                             # Timestamped CSV filenames
+from datasets.dataset_generator import generate_dataset     # Make test dataset
+from dotenv import load_dotenv                              # Load values from .env
+from typing import Any, cast                                # Typing support
+from utils.benchmark_utils import (
+    time_operation,                                         # Time a callable with repeats
+    summarise,                                              # Convert timing list -> stats dict
+    print_summary_line,                                     # Print a single summary block
+    write_summary_csv,                                      # Append a CSV row to summary file
+    )
+
+load_dotenv()                                               # Load connection details from .env
+
+REPEATS = int(os.getenv("REPEATS", "5"))                                # Number of times to repeat each operation
+READ_ID = int(os.getenv("READ_ID", "1"))                                # Lookup ID/key/seq (clamped to dataset size at runtime)
+ISOLATED_MODE = os.getenv("ISOLATED_MODE", "false").lower() == "true"   # Run a single operation only
+ISOLATED_OP = os.getenv("ISOLATED_OP", "full_scan").lower()             # Operation to benchmark in isolation
 
 # Shorten long lists for printing (first 5, "...", last 5)
 def preview_list(items, head: int = 5, tail: int = 5):
@@ -45,7 +57,7 @@ def display_after(items):
     else:
         return items
 
-# Decide which adaptor to use
+# Decide which adaptor module to use
 def select_adaptor(db_type):
     if db_type == "sqlite":
         from adaptors import sqlite_adaptor as adaptor
@@ -60,152 +72,358 @@ def select_adaptor(db_type):
     return adaptor    
 
 
-# Run one CRUD cycle (insert → read → update → delete) for the selected database
+# Run one benchmark cycle for the selected database
 def main():
     db_type = os.getenv("DB_TYPE","sqlite").lower()              # DB to test (sqlite default)
-    reset = os.getenv("RESET_DATA", "true").lower() == "true"    # Check reset flag from .env
+    reset = os.getenv("RESET_DATA", "true").lower() == "true"    # Scenario mode cold/warm flag
     adaptor = cast(Any, select_adaptor(db_type))                 # Load chosen adaptor
 
-    # Make a dataset (size comes from .env, default 3)
-    DATASET_SIZE = int(os.getenv("DATASET_SIZE", "3"))
-    records = generate_dataset(DATASET_SIZE)
+    # Build dataset for this run
+    dataset_size = max(2, int(os.getenv("DATASET_SIZE", "3")))   # Never allow < 2 records
+    records = generate_dataset(dataset_size)
+    read_id = max(1, min(READ_ID, len(records)))                 # Clamp READ_ID to the dataset range (avoids lookup on an ID that doesn't exist)
     print(f"\nDB_TYPE: {db_type}")
 
-    # Print a preview of the dataset (first 5 and last 5 records if large)
+    # Print a preview of generated values (keeps large runs readable)
     if len(records) > 10:
         preview = records[:5] + ["..."] + records[-5:]
     else:
         preview = records
     print("Generated dataset:", preview)
+    os.makedirs("results", exist_ok=True)       # Ensure results folder exists for CSV output
 
-    # SQL: SQLite and MySQL branch. Connect, reset if needed, then run insert/update/delete
+    # -------------------------------------------------------------------------
+    # SQLite / MySQL
+    # -------------------------------------------------------------------------
     if db_type in ("sqlite", "mysql"):
         conn = adaptor.connect()        # Open database 
         adaptor.create_table(conn)      # Create table if needed
 
-        # Optionally clear table (based on RESET_DATA flag)
+        # Scenario mode only: optionally clear table for a cold run
         if reset:
             adaptor.reset_table(conn)
 
-        # Add records, then show data and timings
-        t = time_operation(adaptor.insert_records, repeats=REPEATS, conn=conn, records=records)
+        # --- ISOLATED MODE (SQLite / MySQL) ---
+        if ISOLATED_MODE:
+            # Isolated mode always starts from an empty table (treated as cold)
+            adaptor.reset_table(conn)
+
+            if ISOLATED_OP in ("full_scan", "primary_key_lookup"):
+                adaptor.insert_records(conn, records)
+
+            print(f"\n[ISOLATED MODE] Operation: {ISOLATED_OP.upper()}")
+
+            # Each repeat inserts into an empty table (prevents state carry-over)
+            if ISOLATED_OP == "insert":
+                def isolated_insert():
+                    adaptor.reset_table(conn)
+                    adaptor.insert_records(conn, records)
+                t = time_operation(isolated_insert, repeats=REPEATS)
+            elif ISOLATED_OP == "full_scan":
+                t = time_operation(adaptor.read_all, repeats=REPEATS, conn=conn)
+            elif ISOLATED_OP == "primary_key_lookup":
+                t = time_operation(adaptor.read_by_id, repeats=REPEATS, conn=conn, record_id=read_id)
+
+            # Each repeat resets + re-inserts baseline before updating 
+            elif ISOLATED_OP == "update":
+                def isolated_update():
+                    adaptor.reset_table(conn)
+                    adaptor.insert_records(conn, records)
+                    adaptor.update_record(conn=conn, record_id=read_id, new_value=f"{records[0]} (updated)")
+                t = time_operation(isolated_update, repeats=REPEATS)
+
+            # Each repeat resets + re-inserts baseline before deleting 
+            elif ISOLATED_OP == "delete":
+                def isolated_delete():
+                    adaptor.reset_table(conn)
+                    adaptor.insert_records(conn, records)
+                    adaptor.delete_record(conn=conn, record_id=read_id)
+                t = time_operation(isolated_delete, repeats=REPEATS)
+            else:
+                raise ValueError(f"Unsupported ISOLATED_OP: {ISOLATED_OP}")
+
+            isolated_run_type = "cold"      # Isolated mode always resets state
+
+            summary_path = (
+                f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_"
+                f"{db_type}_{isolated_run_type}_{len(records)}_isolated.csv"
+            )
+
+            write_summary_csv(summary_path, db_type, ISOLATED_OP, len(records),
+                              isolated_run_type, summarise(t))
+            print_summary_line(db_type, ISOLATED_OP, len(records),
+                               isolated_run_type, summarise(t))
+
+            conn.close()
+            return
+
+        # --- SCENARIO MODE (SQLite / MySQL) ---
+        # Insert is repeated REPEATS times, so table size may increase during the run
+        def scenario_insert_once():
+            if reset:
+                adaptor.reset_table(conn)
+            adaptor.insert_records(conn, records)
+
+        t = time_operation(scenario_insert_once, repeats=REPEATS)
         print("\nTable Size After INSERT:", display_after(adaptor.read_all(conn)))
         print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Save a daily CSV for this database + run type + dataset size.
-        summary_path = f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_{db_type}_{'cold' if reset else 'warm'}_{len(records)}.csv"
+        # One summary CSV per database + run type + dataset size + day
+        summary_path = (f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_"
+                        f"{db_type}_{'cold' if reset else 'warm'}_{len(records)}.csv"
+                    )
         write_summary_csv(summary_path, db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Time READ_ALL
-        t = time_operation(adaptor.read_all, repeats=REPEATS, conn=conn)
+        # Full scan (read all rows)
+        def scenario_full_scan():
+            if reset:
+                adaptor.reset_table(conn)
+            adaptor.insert_records(conn, records)
+            adaptor.read_all(conn)
+
+        t = time_operation(scenario_full_scan, repeats=REPEATS)
         print("\nFull Scan returned:", display_after(adaptor.read_all(conn)))
         print_summary_line(db_type, "full_scan", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "full_scan", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Time READ_BY_ID (primary key lookup)
-        t = time_operation(adaptor.read_by_id, repeats=REPEATS, conn=conn, record_id=READ_ID)
-        result = adaptor.read_by_id(conn, READ_ID)
-        print(f"\nPrimary Key Lookup returned (id={READ_ID}):", result)
+        # Primary key lookup (single row)
+        def scenario_pk_lookup():
+            if reset:
+                adaptor.reset_table(conn)
+            adaptor.insert_records(conn, records)
+            adaptor.read_by_id(conn, read_id)
+
+        t = time_operation(scenario_pk_lookup, repeats=REPEATS)
+        result = adaptor.read_by_id(conn, read_id)
+        print(f"\nPrimary Key Lookup returned (id={read_id}):", result)
         print_summary_line(db_type, "primary_key_lookup", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "primary_key_lookup", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Update record 1, then show data and timings
-        t = time_operation(adaptor.update_record, repeats=REPEATS, conn=conn, record_id=1,
-                           new_value=f"{records[0]} (updated)")
+        # Update record 1 (kept fixed for consistency across runs)
+        def scenario_update():
+            if reset:
+                adaptor.reset_table(conn)
+            adaptor.insert_records(conn, records)
+            adaptor.update_record(conn=conn, record_id=read_id, new_value=f"{records[0]} (updated)")
+
+        t = time_operation(scenario_update, repeats=REPEATS)
         print("\nTable Size After UPDATE:", display_after(adaptor.read_all(conn)))
         print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Remove record 2, then show data and timings
-        t = time_operation(adaptor.delete_record, repeats=REPEATS, conn=conn, record_id=2)
+        # Delete record 2 (kept fixed for consistency across runs)
+        def scenario_delete():
+            if reset:
+                adaptor.reset_table(conn)
+            adaptor.insert_records(conn, records)
+            adaptor.delete_record(conn=conn, record_id=read_id)
+
+        t = time_operation(scenario_delete, repeats=REPEATS)
         print("\nTable Size After DELETE:", display_after(adaptor.read_all(conn)))
         print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
         conn.close()    # Close database connection
 
-    # MongoDB branch. Connect, reset if needed, then run insert/update/delete
+
+    # -------------------------------------------------------------------------
+    # MongoDB
+    # -------------------------------------------------------------------------
     elif db_type == "mongodb":
         db: Any = adaptor.connect()           # Connect to MongoDB database
 
-        # Drop collection if RESET_DATA=true
+        # Scenario mode only: optionally drop collection for a cold run
         if reset:
             db.records.drop()
-            db.records.create_index("seq")    # Non-unique index: avoids DuplicateKeyError on repeats
+            db.meta.delete_one({"_id": "record_seq"})   # Reset counter for cold runs
+            db.records.create_index("seq", unique=True)
+        
+        # --- ISOLATED MODE (MongoDB) ---
+        if ISOLATED_MODE:
+            db.records.drop()
+            db.records.create_index("seq")  
 
-        # Add records, then show data and timings
+            if ISOLATED_OP in ("full_scan", "primary_key_lookup"):
+                adaptor.insert_records(db, records)
+
+            print(f"\n[ISOLATED MODE] Operation: {ISOLATED_OP.upper()}")
+
+            if ISOLATED_OP == "insert":
+                # Each repeat inserts into an empty collection (prevents state carry-over)
+                def isolated_insert():
+                    db.records.drop()
+                    db.records.create_index("seq")
+                    adaptor.insert_records(db, records)
+                t = time_operation(isolated_insert, repeats=REPEATS)
+            elif ISOLATED_OP == "full_scan":
+                t = time_operation(adaptor.read_all, repeats=REPEATS, db=db)
+            elif ISOLATED_OP == "primary_key_lookup":
+                t = time_operation(adaptor.read_by_id, repeats=REPEATS, db=db, seq=read_id)
+
+            # Each repeat starts from the same baseline dataset 
+            elif ISOLATED_OP == "update":
+                def isolated_update():
+                    db.records.drop()
+                    db.records.create_index("seq")
+                    adaptor.insert_records(db, records)
+                    adaptor.update_record(db=db, seq=read_id, new_name=f"{records[0]} (updated)")
+                t = time_operation(isolated_update, repeats=REPEATS)
+
+            # Each repeat starts from the same baseline dataset 
+            elif ISOLATED_OP == "delete":
+    
+                def isolated_delete():
+                    db.records.drop()
+                    db.records.create_index("seq")
+                    adaptor.insert_records(db, records)
+                    adaptor.delete_record(db=db, seq=read_id)
+                t = time_operation(isolated_delete, repeats=REPEATS)
+            else:
+                raise ValueError(f"Unsupported ISOLATED_OP: {ISOLATED_OP}")
+
+            # In isolated mode, the run is always effectively "cold"
+            isolated_run_type = "cold"
+
+            summary_path = (
+                f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_"
+                f"{db_type}_{isolated_run_type}_{len(records)}_isolated.csv"
+            )
+
+            write_summary_csv(summary_path, db_type, ISOLATED_OP, len(records),
+                              isolated_run_type, summarise(t))
+            print_summary_line(db_type, ISOLATED_OP, len(records),
+                               isolated_run_type, summarise(t))
+            return
+
+
+        # --- SCENARIO MODE (MongoDB) ---
+        # Note: insert is repeated REPEATS times, so collection size may increase during the run
         t = time_operation(adaptor.insert_records, repeats=REPEATS, db=db, records=records)
         print("\nTable Size After INSERT:", display_after(adaptor.read_all(db)))
         print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Save a daily CSV for this database + run type + dataset size.
-        summary_path = f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_{db_type}_{'cold' if reset else 'warm'}_{len(records)}.csv"
+        summary_path = (f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_"
+                        f"{db_type}_{'cold' if reset else 'warm'}_{len(records)}.csv"
+                    )
         write_summary_csv(summary_path, db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Time READ_ALL
         t = time_operation(adaptor.read_all, repeats=REPEATS, db=db)
         print("\nFull Scan returned:", display_after(adaptor.read_all(db)))
         print_summary_line(db_type, "full_scan", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "full_scan", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Time READ_BY_ID (lookup by seq)
-        t = time_operation(adaptor.read_by_id, repeats=REPEATS, db=db, seq=READ_ID)
-        result = adaptor.read_by_id(db, READ_ID)
-        print(f"\nPrimary Key Lookup returned (id={READ_ID}):", result)
+        t = time_operation(adaptor.read_by_id, repeats=REPEATS, db=db, seq=read_id)
+        result = adaptor.read_by_id(db, read_id)
+        print(f"\nPrimary Key Lookup returned (id={read_id}):", result)
         print_summary_line(db_type, "primary_key_lookup", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "primary_key_lookup", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Update record with seq=1, then show data and timings
         t = time_operation(adaptor.update_record, repeats=REPEATS, db=db, seq=1, new_name=f"{records[0]} (updated)")
         print("\nTable Size After UPDATE:", display_after(adaptor.read_all(db)))
         print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Remove record with seq=2, then show data and timings
-        t = time_operation(adaptor.delete_record, repeats=REPEATS, db=db)
+        t = time_operation(adaptor.delete_record, repeats=REPEATS, db=db, seq=2)
         print("\nTable Size After DELETE:", display_after(adaptor.read_all(db)))
         print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))
 
-    # Redis branch. Connect, reset if needed, then run insert/update/delete
-    elif db_type == "redis":
-        r = adaptor.connect()    # Connect to Redis server
 
-        # Flush DB if RESET_DATA=true
+    # -------------------------------------------------------------------------
+    # Redis
+    # -------------------------------------------------------------------------
+    elif db_type == "redis":
+        r = adaptor.connect()           # Connect to Redis server
+
+        # Scenario mode only: flush store for a cold run
         if reset:
             adaptor.reset_store(r)
+        
+        # --- ISOLATED MODE (Redis) ---
+        if ISOLATED_MODE:
+            # Isolated mode always starts clean (treated as cold)
+            adaptor.reset_store(r)
 
-        # Add records, then show data and timings
+            # For scans/lookups, insert baseline data once before timing
+            if ISOLATED_OP in ("full_scan", "primary_key_lookup"):
+                adaptor.insert_records(r, records)
+
+            print(f"\n[ISOLATED MODE] Operation: {ISOLATED_OP.upper()}")
+
+            if ISOLATED_OP == "insert":
+                # Each repeat inserts into an empty store (prevents state carry-over)
+                def isolated_insert():
+                    adaptor.reset_store(r)
+                    adaptor.insert_records(r, records)
+
+                t = time_operation(isolated_insert, repeats=REPEATS)
+
+            elif ISOLATED_OP == "full_scan":
+                t = time_operation(adaptor.read_all, repeats=REPEATS, r=r)
+
+            elif ISOLATED_OP == "primary_key_lookup":
+                t = time_operation(adaptor.read_by_id, repeats=REPEATS, r=r, record_id=read_id)
+
+            # Each repeat resets + re-inserts baseline before updating 
+            elif ISOLATED_OP == "update":
+                def isolated_update():
+                    adaptor.reset_store(r)
+                    adaptor.insert_records(r, records)
+                    adaptor.update_record(r=r, record_id=read_id, new_value=f"{records[0]} (updated)")
+                t = time_operation(isolated_update, repeats=REPEATS)
+
+            # Each repeat resets + re-inserts baseline before deleting 
+            elif ISOLATED_OP == "delete":
+                def isolated_delete():
+                    adaptor.reset_store(r)
+                    adaptor.insert_records(r, records)
+                    adaptor.delete_record(r=r, record_id=read_id)
+                t = time_operation(isolated_delete, repeats=REPEATS)
+            else:
+                raise ValueError(f"Unsupported ISOLATED_OP: {ISOLATED_OP}")
+
+            # In isolated mode, the run is always effectively "cold"
+            isolated_run_type = "cold"
+
+            summary_path = (
+                f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_"
+                f"{db_type}_{isolated_run_type}_{len(records)}_isolated.csv"
+            )
+
+            write_summary_csv(summary_path, db_type, ISOLATED_OP, len(records),
+                              isolated_run_type, summarise(t))
+            print_summary_line(db_type, ISOLATED_OP, len(records),
+                               isolated_run_type, summarise(t))
+            return
+
+
+        # --- SCENARIO MODE (Redis) ---
+        # Insert is repeated REPEATS times, so keys may accumulate during the run
         t = time_operation(adaptor.insert_records, repeats=REPEATS, r=r, records=records)
-
-        # Redis uses an internal counter so warm runs accumulate like SQL/Mongo
         print("\nTable Size After INSERT:", display_after(adaptor.read_all(r)))
         print_summary_line(db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Save a daily CSV for this database + run type + dataset size.
-        summary_path = f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_{db_type}_{'cold' if reset else 'warm'}_{len(records)}.csv"
+        summary_path = (f"results/summary_{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')}_"
+                        f"{db_type}_{'cold' if reset else 'warm'}_{len(records)}.csv"
+                    )
         write_summary_csv(summary_path, db_type, "insert", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Time READ_ALL
         t = time_operation(adaptor.read_all, repeats=REPEATS, r=r)
         print("\nFull Scan returned:", display_after(adaptor.read_all(r)))
         print_summary_line(db_type, "full_scan", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "full_scan", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Time READ_BY_ID (key lookup)
-        t = time_operation(adaptor.read_by_id, repeats=REPEATS, r=r, record_id=READ_ID)
-        result = adaptor.read_by_id(r, READ_ID)
-        print(f"\nPrimary Key Lookup returned (id={READ_ID}):", result)
+        t = time_operation(adaptor.read_by_id, repeats=REPEATS, r=r, record_id=read_id)
+        result = adaptor.read_by_id(r, read_id)
+        print(f"\nPrimary Key Lookup returned (id={read_id}):", result)
         print_summary_line(db_type, "primary_key_lookup", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "primary_key_lookup", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Update key 1, then show data and timings
         t = time_operation(adaptor.update_record, repeats=REPEATS, r=r, record_id=1, new_value=f"{records[0]} (updated)")
         print("\nTable Size After UPDATE:", display_after(adaptor.read_all(r)))
         print_summary_line(db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
         write_summary_csv(summary_path, db_type, "update", len(records), "cold" if reset else "warm", summarise(t))
 
-        # Remove key 2, then show data and timings
         t = time_operation(adaptor.delete_record, repeats=REPEATS, r=r, record_id=2)
         print("\nTable Size After DELETE:", display_after(adaptor.read_all(r)))
         print_summary_line(db_type, "delete", len(records), "cold" if reset else "warm", summarise(t))

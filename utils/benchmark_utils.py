@@ -12,10 +12,13 @@ Used by:
     runner.py (to measure database inserts, reads, updates, deletes)
 """
 
-from __future__ import annotations                        # Enable future-style annotations 
-import statistics                                         # For averages and medians
-import csv, os, datetime, time
-from typing import Callable, Iterable, Any, Dict, List    # Simple type hints for clarity
+from __future__ import annotations                               # Enable future-style annotations 
+import statistics                                                # For averages and medians
+import csv
+import os
+import datetime
+import time
+from typing import Callable, Iterable, Any, Dict, List, Union    # Simple type hints for clarity
 
 
 # Time a function once and return the elapsed seconds (float).
@@ -37,7 +40,7 @@ def time_operation(fn: Callable, repeats: int = 5, *args, **kwargs) -> List[floa
 
 
 # Turn durations into simple stats (seconds)
-def summarise(durations: Iterable[float]) -> Dict[str, float]:
+def summarise(durations: Iterable[float]) -> Dict[str, Union[int, float]]:
     xs = list(durations)                  # Convert to list
     n = len(xs)                           # How many timings received
 
@@ -52,11 +55,11 @@ def summarise(durations: Iterable[float]) -> Dict[str, float]:
         }
 
     return {
-        "n": float(n),                    # Number of runs
-        "min": xs[0],                     # Fastest
-        "max": xs[-1],                    # Slowest
-        "mean": statistics.fmean(xs),     # Average
-        "median": statistics.median(xs)   # Middle value
+        "n": int(n),                        # Number of runs
+        "min": min(xs),                     # Fastest
+        "max": max(xs),                     # Slowest
+        "mean": statistics.fmean(xs),       # Average
+        "median": statistics.median(xs)     # Middle value
     }
 
 
@@ -66,7 +69,7 @@ def print_summary_line(
         op_name: str,
         dataset_size: int,
         run_type: str,
-        stats: Dict[str, float]
+        stats: Dict[str, Union[int, float]]
 ) -> None:
     
     print(
@@ -84,7 +87,7 @@ def write_summary_csv(
     op_name: str,
     dataset_size: int,
     run_type: str,
-    stats: Dict[str, float]
+    stats: Dict[str, Union[int, float]]
 ) -> None:
   
     os.makedirs(os.path.dirname(path), exist_ok=True)
