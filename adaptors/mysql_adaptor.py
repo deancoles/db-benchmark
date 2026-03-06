@@ -70,11 +70,7 @@ def delete_record(conn, record_id=None):
     if record_id is not None:
         cur.execute("DELETE FROM records WHERE id = %s", (record_id,))
     else:
-        # Delete newest 
-        cur.execute("""
-            DELETE FROM records
-            WHERE id = (SELECT MAX(id) FROM (SELECT id FROM records) AS sub)
-        """)
+        cur.execute("DELETE FROM records WHERE id = (SELECT MAX(id) FROM (SELECT id FROM records) AS sub) ")
     conn.commit()
 
 
@@ -95,6 +91,12 @@ def reset_table(conn):
     cur = conn.cursor()
     cur.execute("TRUNCATE TABLE records;")
     conn.commit()
+
+
+def count_records(conn):
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM records")
+    return cur.fetchone()[0]
 
 
 # Run a simple test if this file is executed directly

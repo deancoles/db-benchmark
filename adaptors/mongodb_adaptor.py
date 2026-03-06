@@ -14,14 +14,14 @@ Note:
     (ignores RESET_DATA in .env; this is just a quick check).
 """
 
-import os                          # Access environment variables
+import os                           # Access environment variables
 import re
-from dotenv import load_dotenv     # Load variables from .env file
-from pymongo import MongoClient    # MongoDB driver for Python
+from dotenv import load_dotenv      # Load variables from .env file
+from pymongo import MongoClient     # MongoDB driver for Python
 from pymongo import ReturnDocument
-load_dotenv()                      # Load database connection details from .env file
+load_dotenv()                       # Load database connection details from .env file
 
-SEQ_DOC_ID = "record_seq"  # fixed id for the counter document
+SEQ_DOC_ID = "record_seq"           # fixed id for the counter document
 
 
 # Connect to MongoDB and return a database handle
@@ -33,13 +33,6 @@ def connect():
 
 
 def _next_seqs(db, n: int):
-    """
-    Reserve and return the next n unique seq values (like auto-increment).
-    Returns a list of ints e.g. [101, 102, 103]
-    """
-    if n <= 0:
-        return []
-
     doc = db.meta.find_one_and_update(
         {"_id": SEQ_DOC_ID},
         {"$inc": {"value": n}},
@@ -93,12 +86,17 @@ def filter_contains(db, substring: str):
     return [(doc["seq"], doc["name"]) for doc in cursor]
 
 
+def count_records(db):
+    return db.records.count_documents({})
+
+
 # Run a simple test if this file is executed directly
 # Always resets the collection, ignoring RESET_DATA flag in .env.
 if __name__ == "__main__":
     db = connect()                                                                  # Connect to MongoDB
     db.records.drop()                                                               # Drop collection for a clean start
-    db.records.create_index("seq")                                                  # Non-unique index so repeats won't fail
+    db.meta.delete_one({"_id": SEQ_DOC_ID})                                         # Reset seq counter
+    db.records.create_index("seq", unique=True)                                     # Unique index to match benchmark fairness
 
     # Insert sample records
     insert_records(db, ["Alice", "Bob", "Charlie"])
@@ -108,7 +106,7 @@ if __name__ == "__main__":
     update_record(db, 1, "Alex")
     print("Records after update:", read_all(db))
 
-    # Delete the newest document (highest seq)
+    # Delete seq 2
     delete_record(db, 2)
     print("Records after delete:", read_all(db))
     

@@ -136,6 +136,10 @@ def filter_contains(r, substring: str):
     return out
 
 
+def count_records(r):
+    return sum(1 for _ in _numeric_ids(r))
+
+
 # Run a simple test if this file is executed directly
 # Always resets the store, ignoring RESET_DATA flag in .env.
 if __name__ == "__main__":

@@ -63,11 +63,7 @@ def delete_record(conn, record_id=None):
     if record_id is not None:
         cur.execute("DELETE FROM records WHERE id = ?", (record_id,))
     else:
-        # Delete newest 
-        cur.execute("""
-            DELETE FROM records
-            WHERE id = (SELECT MAX(id) FROM records)
-        """)
+        cur.execute("DELETE FROM records WHERE id = (SELECT MAX(id) FROM records)")
     conn.commit()
 
 
@@ -89,6 +85,12 @@ def reset_table(conn):
     cur.execute("DELETE FROM records;")                                # Remove rows
     cur.execute("DELETE FROM sqlite_sequence WHERE name='records';")   # Reset counter
     conn.commit()
+
+
+def count_records(conn):
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM records")
+    return cur.fetchone()[0]
 
 
 # Run a simple test if this file is executed directly
