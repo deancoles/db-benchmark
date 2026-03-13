@@ -1,7 +1,20 @@
-import pandas as pd
-import glob
+"""
+build_pilot_table.py
+--------------------
+What this file does:
+    - Combines pilot benchmark result files
+    - Builds summary tables for each dataset size
+    - Saves pilot tables as separate CSV files
 
-files = glob.glob("pilot_results/*.csv")
+Used by:
+    Pilot benchmarking analysis only
+"""
+
+import pandas as pd                 # Data analysis and table creation
+import glob                         # Locate pilot result CSV files
+
+# Locate pilot results and merge results into one dataframe
+files = glob.glob("pilot_results/*.csv")       
 dfs = [pd.read_csv(file) for file in files]
 combined = pd.concat(dfs, ignore_index=True)
 

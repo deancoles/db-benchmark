@@ -8,20 +8,16 @@ What this file does:
     - Provides CRUD helpers for benchmarking
 
 Used by:
-    runner.py (DB_TYPE=redis)
-
-Note:
-    If run directly, the DB is flushed and demo keys are inserted
-    (ignores RESET_DATA in .env; this is just a quick check).
+    - runner.py (DB_TYPE=redis)
 """
 
 import os                                                    # Access environment variables
-from dotenv import load_dotenv                               # Load variables from .env file
+from dotenv import load_dotenv                               # Load configuration variables from .env 
 import redis                                                 # Redis (and Memurai) client
-load_dotenv()                                                # Load database connection details from .env file
+load_dotenv()                                                # Initialise environment variables from .env 
 
 
-# Connect to Redis using host/port/db from .env (defaults if missing)
+# Connect to Redis using .env variables
 def connect():
     return redis.Redis(
         host=os.getenv("REDIS_HOST", "localhost"),
@@ -72,18 +68,20 @@ def insert_records(r, records):
         max_id = max(existing_ids) if existing_ids else 0   # Highest id so far (or 0)
         r.set(SEQ_KEY, max_id)                              # Set counter to current max
 
-    pipe = r.pipeline()                                     # Pipeline batches Redis commands
+    # Increment the sequence counter once for each record
+    pipe = r.pipeline()                                     
     for _ in records:
         pipe.incr(SEQ_KEY)                      
     new_ids = pipe.execute()   
 
+    # Store each value using its generated ID
     pipe = r.pipeline()
     for new_id, val in zip(new_ids, records):
         pipe.set(_key(new_id), val)
     pipe.execute()                    
 
 
-# Return all rows as list of (id, value) pairs
+# Return all rows as a list of (id, value) pairs
 def read_all(r):
     ids = sorted(_numeric_ids(r))                           # Sorted list of numeric ids
     out = []                                                # Collect results
@@ -108,7 +106,7 @@ def read_by_id(r, record_id):
 
 # Update one value by id
 def update_record(r, record_id, new_value):
-    r.set(_key(record_id), new_value)                      # Replace value at key
+    r.set(_key(record_id), new_value)                      
 
 
 # Delete by id if provided, otherwise delete newest (highest id)
@@ -126,6 +124,7 @@ def delete_record(r, record_id=None):
     r.delete(_key(max(ids)))
 
 
+# Return records where value contains the given substring
 def filter_contains(r, substring: str):
     out = []
     for i in sorted(_numeric_ids(r)):
@@ -136,22 +135,25 @@ def filter_contains(r, substring: str):
     return out
 
 
+# Return total number of records stored in Redis
 def count_records(r):
     return sum(1 for _ in _numeric_ids(r))
 
 
 # Run a simple test if this file is executed directly
-# Always resets the store, ignoring RESET_DATA flag in .env.
 if __name__ == "__main__":
-    client = connect()                                     # Connect to Redis
-    reset_store(client)                                    # Ensure reset
+    client = connect()                                     
+    reset_store(client)                                    
 
+    # Insert three sample records and display the result
     insert_records(client,["Alice", "Bob", "Charlie"])
     print("After insert:", read_all(client))
 
+    # Update the first record and show the updated dataset
     update_record(client, 1, "Alex")
     print("After update:", read_all(client))
 
+    # Delete the record with id 2 and display the remaining data
     delete_record(client, 2)
     print("After delete:", read_all(client))
     

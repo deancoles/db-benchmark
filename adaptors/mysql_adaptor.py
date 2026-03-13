@@ -8,16 +8,12 @@ What this file does:
 
 Used by:
     runner.py (DB_TYPE=mysql)
-
-Note:
-    If run directly, the table is reset and demo rows are inserted
-    (ignores RESET_DATA in .env; this is just a quick check).
 """
 
-import os                         # Access environment variables
-from dotenv import load_dotenv    # Load variables from .env file
-import mysql.connector            # MySQL driver for Python
-load_dotenv()                     # Load database credentials from .env file
+import os                           # Access environment variables
+from dotenv import load_dotenv      # Load configuration variables from .env file
+import mysql.connector              # MySQL database driver for Python
+load_dotenv()                       # Initialise environment variables from .env file
 
 
 # Connect to MySQL using .env variables
@@ -30,7 +26,7 @@ def connect():
     )
 
 
-# Create the records table if missing
+# Create the records table 
 def create_table(conn):
     cur = conn.cursor()
     cur.execute("""
@@ -63,6 +59,7 @@ def update_record(conn, record_id, new_value):
     conn.commit()
 
 
+# Delete by id if provided, otherwise delete newest (highest id)
 def delete_record(conn, record_id=None):
     cur = conn.cursor()
 
@@ -74,12 +71,14 @@ def delete_record(conn, record_id=None):
     conn.commit()
 
 
+# Return one row by id
 def read_by_id(conn, record_id: int):
     cur = conn.cursor()
     cur.execute("SELECT * FROM records WHERE id = %s", (record_id,))
     return cur.fetchone()
 
 
+# Return rows where the name contains the given substring
 def filter_contains(conn, substring: str):
     cur = conn.cursor()
     cur.execute("SELECT * FROM records WHERE name LIKE %s", (f"%{substring}%",))
@@ -93,6 +92,7 @@ def reset_table(conn):
     conn.commit()
 
 
+# Count all the records stored in MySQL
 def count_records(conn):
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM records")
@@ -100,21 +100,20 @@ def count_records(conn):
 
 
 # Run a simple test if this file is executed directly
-# Always resets the table, ignoring RESET_DATA flag in .env.
 if __name__ == "__main__":
     conn = connect()
     create_table(conn)
-    reset_table(conn)  # ensure clean state
+    reset_table(conn)  
 
-    # Insert sample records
+    # Insert sample records and display the result
     insert_records(conn,["Alice", "Bob", "Charlie"])
     print("Records after insert:", read_all(conn))
 
-    # Update id 1
+    # Update the first record and show the updated dataset
     update_record(conn, 1, "Alex")
     print("Records after update:", read_all(conn))
 
-    # Delete the newest row (highest id)
+    # Delete the record with id 2 and display the remaining data
     delete_record(conn, 2)
     print("Records after delete:", read_all(conn))
 

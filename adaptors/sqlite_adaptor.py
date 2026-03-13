@@ -7,14 +7,10 @@ What this file does:
     - Provides CRUD helpers for benchmarking
 
 Used by:
-    runner.py (DB_TYPE=sqlite)
-
-Note:
-    If run directly, the table is reset and demo rows are inserted
-    (ignores RESET_DATA in .env; this is just a quick check).
+    - runner.py (DB_TYPE=sqlite)
 """
 
-import sqlite3    # Built-in library to work with SQLite databases
+import sqlite3    # Built-in Python library for SQLite database access
 
 
 # Open (or create) the SQLite database file
@@ -55,7 +51,7 @@ def update_record(conn, record_id, new_value):
     conn.commit()
 
 
-# Delete the newest row (highest id)
+# Delete by id if provided, otherwise delete newest (highest id)
 def delete_record(conn, record_id=None):
     cur = conn.cursor()
 
@@ -67,12 +63,14 @@ def delete_record(conn, record_id=None):
     conn.commit()
 
 
+# Return one row by id
 def read_by_id(conn, record_id: int):
     cur = conn.cursor()
     cur.execute("SELECT * FROM records WHERE id = ?", (record_id,))
     return cur.fetchone()
 
 
+# Return rows where the name contains the given substring
 def filter_contains(conn, substring: str):
     cur = conn.cursor()
     cur.execute("SELECT * FROM records WHERE name LIKE ?", (f"%{substring}%",))
@@ -82,11 +80,12 @@ def filter_contains(conn, substring: str):
 # Clear all rows and reset the auto-increment counter (id starts at 1).
 def reset_table(conn):
     cur = conn.cursor()
-    cur.execute("DELETE FROM records;")                                # Remove rows
-    cur.execute("DELETE FROM sqlite_sequence WHERE name='records';")   # Reset counter
+    cur.execute("DELETE FROM records;")                                
+    cur.execute("DELETE FROM sqlite_sequence WHERE name='records';")   
     conn.commit()
 
 
+# Return the total number of records in the table
 def count_records(conn):
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM records")
@@ -94,21 +93,20 @@ def count_records(conn):
 
 
 # Run a simple test if this file is executed directly
-# Always resets the table, ignoring RESET_DATA flag in .env.
 if __name__ == "__main__":
     conn = connect()
     create_table(conn)
-    reset_table(conn)                                                  # Reset table for fresh runs
+    reset_table(conn)                                                 
 
-    # Insert sample records
+    # Insert three sample records and display the result
     insert_records(conn, ["Alice", "Bob", "Charlie"])
     print("Records after insert:", read_all(conn))
 
-    # Update id 1
+    # Update the first record and show the updated dataset
     update_record(conn, 1, "Alex")
     print("Records after update:", read_all(conn))
 
-    # Delete the newest row (highest id)
+    # Delete the record with id 2 and display the remaining data
     delete_record(conn, 2)
     print("Records after delete:", read_all(conn))
 

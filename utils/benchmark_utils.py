@@ -9,29 +9,29 @@ What this file does:
     - Saves one summary row per operation to CSV (6 decimal places)
 
 Used by:
-    runner.py (to measure database inserts, reads, updates, deletes)
+    - runner.py (to measure database inserts, reads, updates, deletes)
 """
 
-from __future__ import annotations                               # Enable future-style annotations 
-import statistics                                                # For averages and medians
-import csv
-import os
-import datetime
-import time
-from typing import Callable, Iterable, Any, Dict, List, Union    # Simple type hints for clarity
+from __future__ import annotations                                  # Enable future-style annotations 
+import statistics                                                   # For averages and medians
+import csv                                                          # Write benchmark results to CSV
+import os                                                           # File and directory handling
+import datetime                                                     # Timestamp benchmark results
+import time                                                         # High precision timing functions
+from typing import Callable, Iterable, Any, Dict, List, Union       # Simple type hints for clarity
 
 
 # Time a function once and return the elapsed seconds (float).
 def _time_once(fn: Callable, *args, **kwargs) -> float:
-    start = time.perf_counter()           # Start timer
-    fn(*args, **kwargs)                   # Run function
-    end = time.perf_counter()             # End timer
-    return end - start                    # Elapsed time in seconds
+    start = time.perf_counter()           
+    fn(*args, **kwargs)                   
+    end = time.perf_counter()             
+    return end - start                    
 
 
 # Run a function several times and collect durations
 def time_operation(fn: Callable, repeats: int = 5, *args, **kwargs) -> List[float]:
-    durations: List[float] = []           # List to store each run’s time
+    durations: List[float] = []           
 
     # Always run at least once even if repeats <= 0 (safety guard).
     for _ in range(max(1, repeats)):    
@@ -39,7 +39,7 @@ def time_operation(fn: Callable, repeats: int = 5, *args, **kwargs) -> List[floa
     return durations                      
 
 
-# Turn durations into simple stats (seconds)
+# Convert timing durations into summary statistics (seconds)
 def summarise(durations: Iterable[float]) -> Dict[str, Union[int, float]]:
     xs = list(durations)                  # Convert to list
     n = len(xs)                           # How many timings received
@@ -55,11 +55,11 @@ def summarise(durations: Iterable[float]) -> Dict[str, Union[int, float]]:
         }
 
     return {
-        "n": int(n),                        # Number of runs
-        "min": min(xs),                     # Fastest
-        "max": max(xs),                     # Slowest
-        "mean": statistics.fmean(xs),       # Average
-        "median": statistics.median(xs)     # Middle value
+        "n": int(n),                            # Number of runs
+        "min": min(xs),                         # Fastest
+        "max": max(xs),                         # Slowest
+        "mean": statistics.fmean(xs),           # Average
+        "median": statistics.median(xs)         # Middle value
     }
 
 
