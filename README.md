@@ -134,7 +134,7 @@ This produces performance graphs for:
 
 * Insert operations
 * Full dataset scans
-* Primary key lookups
+* Lookups
 * Update operations
 * Delete operations
 

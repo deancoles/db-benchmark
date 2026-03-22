@@ -18,63 +18,75 @@ import matplotlib.ticker as ticker                  # Custom axis formatting
 df = pd.read_csv("master_benchmark_results.csv")    # Load benchmark dataset
 os.makedirs("graphs", exist_ok=True)                # Ensure directory exists
 plt.style.use("default")                            # Style used in graphs
+plt.rcParams.update({"font.size": 11})              # Font size
 
 # Benchmark operations that will each receive a graph
 operations = [
     "insert",
     "full_scan",
-    "primary_key_lookup",
+    "lookup",
     "update",
     "delete"
 ]
-
-databases = df["db"].unique()                       # Identify unique database systems
+database_order = ["sqlite", "mysql", "mongodb", "redis"]                    # Fixed order for consistency
+databases = [db for db in database_order if db in df["db"].unique()]        # Identify unique database systems
+dataset_sizes = [10000, 50000, 100000, 250000, 500000]                      # Dataset sizes
 
 # Generate a graph for each operation type
 for op in operations:
-
-    plt.figure(figsize=(12,5))                      # Create new figure for the current operation
-    subset = df[df["operation"] == op]              # Filter dataset to only include current operation
+    subset = df[df["operation"] == op]                                      # Filter dataset to only include current operation
+    
+    # Skip empty operations safely
+    if subset.empty:
+        print(f"Skipped {op}: no matching data found")
+        continue
+    
+    plt.figure(figsize=(12,5))                                              # Create new figure for the current operation
+    
+    markers = ["o", "s", "^", "D"]
 
     # Plot a line for each database system
-    for db in databases:
+    for i, db in enumerate(databases):
 
         # Extract data for current database and order by record count (prevents lines appearing out of order on graph)
-        db_data = subset[subset["db"] == db]
-        db_data = db_data.sort_values("records")
+        db_data = subset[subset["db"] == db].sort_values("records")
+        
+        if db_data.empty:
+            continue
 
         # Plot execution time against dataset size
         plt.plot(
             db_data["records"],
             db_data["mean_time"],
-            marker="o",
-            linewidth=2,
+            marker=markers[i],
+            linewidth=1.8,
             label=db
         )
 
     # Axis labels and graph title
+    plt.title(f"{op.replace('_',' ').title()} Operation Performance")
     plt.xlabel("Dataset Size (records)")
     plt.ylabel("Execution Time (s)")
-    plt.title(f"{op.replace('_',' ').title()} Operation Performance")
     
-    plt.xscale("log")                               # Use logarithmic scaling for x-axis
-    
-    # Set the dataset sizes used in experiment
-    dataset_sizes = [100, 1000, 10000, 50000, 100000]
+    # Make x-axis readable
     plt.xticks(dataset_sizes)
-
-    # Include thousands separators for clarity
     plt.gca().xaxis.set_major_formatter(
-        ticker.FuncFormatter(lambda x, pos: f"{int(x):,}")
+        ticker.FuncFormatter(lambda x, pos: f"{int(x):,}" if x >= 1 else "")
     )
-    
+
+    # Format y-axis as normal decimal seconds
+    plt.gca().yaxis.set_major_formatter(
+        ticker.FormatStrFormatter("%.3f")
+    )
+
     # Display legend and gridlines
-    plt.legend(title="Database", loc="upper left", bbox_to_anchor=(1, 1))
-    plt.grid(True)
+    plt.grid(True,linestyle="-", alpha=0.5)      
+    plt.legend(title="Database", loc="upper left", bbox_to_anchor=(1.02, 1))
+
 
     # Save the generated graph to graphs folder
     filename = f"graphs/{op}_performance.png"
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(filename, dpi=600)
 
     # Print confirmation and close the figure before generating next graph

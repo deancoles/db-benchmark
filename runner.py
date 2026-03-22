@@ -5,7 +5,7 @@ Runs benchmarking for the selected database adaptor.
 
 What this script does:
   - Generates a dataset of placeholder record values (size from .env)
-  - Scenario mode: runs INSERT → FULL_SCAN → PRIMARY_KEY_LOOKUP → UPDATE → DELETE
+  - Scenario mode: runs INSERT → FULL_SCAN → LOOKUP → UPDATE → DELETE
   - Isolated mode: runs one chosen operation on a reset baseline dataset
   - Prints timing summaries and writes results to CSV files in the results folder
 
@@ -15,7 +15,7 @@ Controlled by .env:
   REPEATS        number of repeats per timed operation
   ISOLATED_MODE  runs one selected operation independently, resetting the database state before each 
                  repeat so that the operation is measured without influence from other benchmark steps
-  ISOLATED_OP    insert | full_scan | primary_key_lookup | update | delete
+  ISOLATED_OP    insert | full_scan | lookup | update | delete
   READ_ID        record/key/seq used for lookup operations
   OUTPUT_DETAIL  count | preview | full (how much data is printed after each operation)
 """
@@ -134,7 +134,7 @@ def main():
         if ISOLATED_MODE:
             adaptor.reset_table(conn)
 
-            if ISOLATED_OP in ("full_scan", "primary_key_lookup"):
+            if ISOLATED_OP in ("full_scan", "lookup"):
                 adaptor.insert_records(conn, records)
 
             print(f"\n[ISOLATED MODE] Operation: {ISOLATED_OP.upper()}")
@@ -146,7 +146,7 @@ def main():
                 t = time_operation(isolated_insert, repeats=REPEATS)
             elif ISOLATED_OP == "full_scan":
                 t = time_operation(adaptor.read_all, repeats=REPEATS, conn=conn)
-            elif ISOLATED_OP == "primary_key_lookup":
+            elif ISOLATED_OP == "lookup":
                 t = time_operation(adaptor.read_by_id, repeats=REPEATS, conn=conn, record_id=read_id)
             elif ISOLATED_OP == "update":
                 def isolated_update():
@@ -198,17 +198,17 @@ def main():
         print("\nFull Scan returned:", display_after(adaptor.read_all(conn)))
         record_results(summary_path, db_type, "full_scan", len(records), run_type, t)
 
-        # Primary key lookup benchmark
-        def scenario_pk_lookup_sql():
+        # Lookup benchmark
+        def scenario_lookup_sql():
             reset_and_seed_sql()
             adaptor.read_by_id(conn, read_id)
 
         # Measures time required to retrieve one record by id
-        t = time_operation(scenario_pk_lookup_sql, repeats=REPEATS)
+        t = time_operation(scenario_lookup_sql, repeats=REPEATS)
         reset_and_seed_sql()
         result = adaptor.read_by_id(conn, read_id)
-        print(f"\nPrimary Key Lookup returned (id={read_id}):", result)
-        record_results(summary_path, db_type, "primary_key_lookup", len(records), run_type, t)
+        print(f"\nLookup returned (id={read_id}):", result)
+        record_results(summary_path, db_type, "lookup", len(records), run_type, t)
 
         # Update benchmark
         def scenario_update_sql():
@@ -250,7 +250,7 @@ def main():
             db.meta.delete_one({"_id": "record_seq"})
             db.records.create_index("seq", unique=True)  
 
-            if ISOLATED_OP in ("full_scan", "primary_key_lookup"):
+            if ISOLATED_OP in ("full_scan", "lookup"):
                 adaptor.insert_records(db, records)
 
             print(f"\n[ISOLATED MODE] Operation: {ISOLATED_OP.upper()}")
@@ -264,7 +264,7 @@ def main():
                 t = time_operation(isolated_insert, repeats=REPEATS)
             elif ISOLATED_OP == "full_scan":
                 t = time_operation(adaptor.read_all, repeats=REPEATS, db=db)
-            elif ISOLATED_OP == "primary_key_lookup":
+            elif ISOLATED_OP == "lookup":
                 t = time_operation(adaptor.read_by_id, repeats=REPEATS, db=db, seq=read_id)
             elif ISOLATED_OP == "update":
                 def isolated_update():
@@ -321,17 +321,17 @@ def main():
         print("\nFull Scan returned:", display_after(adaptor.read_all(db)))
         record_results(summary_path, db_type, "full_scan", len(records), run_type, t)
 
-        # Primary Key lookup benchmark
-        def scenario_pk_lookup_mongo():
+        # Lookup benchmark
+        def scenario_lookup_mongo():
             reset_and_seed_mongo()
             adaptor.read_by_id(db,read_id)
 
         # Measures time required to retrieve one record by id
-        t = time_operation(scenario_pk_lookup_mongo, repeats=REPEATS)
+        t = time_operation(scenario_lookup_mongo, repeats=REPEATS)
         reset_and_seed_mongo()
         result = adaptor.read_by_id(db, read_id)
-        print(f"\nPrimary Key Lookup returned (id={read_id}):", result)
-        record_results(summary_path, db_type, "primary_key_lookup", len(records), run_type, t)
+        print(f"\nLookup returned (id={read_id}):", result)
+        record_results(summary_path, db_type, "lookup", len(records), run_type, t)
 
         # Update benchmark
         def scenario_update_mongo():
@@ -370,7 +370,7 @@ def main():
             adaptor.reset_store(r)
 
             # For scans/lookups, insert baseline data once before timing
-            if ISOLATED_OP in ("full_scan", "primary_key_lookup"):
+            if ISOLATED_OP in ("full_scan", "lookup"):
                 adaptor.insert_records(r, records)
 
             print(f"\n[ISOLATED MODE] Operation: {ISOLATED_OP.upper()}")
@@ -382,7 +382,7 @@ def main():
                 t = time_operation(isolated_insert, repeats=REPEATS)
             elif ISOLATED_OP == "full_scan":
                 t = time_operation(adaptor.read_all, repeats=REPEATS, r=r)
-            elif ISOLATED_OP == "primary_key_lookup":
+            elif ISOLATED_OP == "lookup":
                 t = time_operation(adaptor.read_by_id, repeats=REPEATS, r=r, record_id=read_id)
             elif ISOLATED_OP == "update":
                 def isolated_update():
@@ -433,17 +433,17 @@ def main():
         print("\nFull Scan returned:", display_after(adaptor.read_all(r)))
         record_results(summary_path, db_type, "full_scan", len(records), run_type, t)
 
-        # Primary Key Lookup benchmark
-        def scenario_pk_lookup_redis():
+        # Lookup benchmark
+        def scenario_lookup_redis():
             reset_and_seed_redis()
             adaptor.read_by_id(r, read_id)
 
         # Measures time required to retrieve one record by id
-        t = time_operation(scenario_pk_lookup_redis, repeats=REPEATS)
+        t = time_operation(scenario_lookup_redis, repeats=REPEATS)
         reset_and_seed_redis()
         result = adaptor.read_by_id(r, read_id)
-        print(f"\nPrimary Key Lookup returned (id={read_id}):", result)
-        record_results(summary_path, db_type, "primary_key_lookup", len(records), run_type, t)
+        print(f"\nLookup returned (id={read_id}):", result)
+        record_results(summary_path, db_type, "lookup", len(records), run_type, t)
 
         # Update benchmark
         def scenario_update_redis():
